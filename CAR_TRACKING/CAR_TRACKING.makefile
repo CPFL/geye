@@ -7,9 +7,13 @@ CUDA_COMPILER = nvcc -arch=$(CUDA_ARCH) -cubin
 # Include paths...
 #Debug_Include_Path=-I"../../../../../../OpenCV2.0/include/opencv" 
 CUDA_INC=/usr/local/cuda/include
-Debug_Include_Path= -I"/usr/local/include/opencv" -I"/usr/src/linux-headers-3.2.0-33/arch/um/include/shared" -I"/usr/local/include/opencv2/legacy/" -I$(CUDA_INC)
+OPENCV_INC=/usr/local/include/opencv
+LEGACY_INC=/usr/local/include/opencv2/legacy
+#Debug_Include_Path= -I"/usr/local/include/opencv" -I"/usr/src/linux-headers-3.2.0-33/arch/um/include/shared" -I"/usr/local/include/opencv2/legacy/" -I$(CUDA_INC)
+Debug_Include_Path= -I$(OPENCV_INC) -I"/usr/src/linux-headers-3.2.0-33/arch/um/include/shared" -I$(LEGACY_INC) -I$(CUDA_INC)
 #Release_Include_Path=-I"../../../../../../OpenCV2.0/include/opencv" 
-Release_Include_Path= -I"/usr/local/include/opencv" -I"/usr/src/linux-headers-3.2.0-33/arch/um/include/shared" -I"/usr/local/include/opencv2/legacy/" -I$(CUDA_INC)
+#Release_Include_Path= -I"/usr/local/include/opencv" -I"/usr/src/linux-headers-3.2.0-33/arch/um/include/shared" -I"/usr/local/include/opencv2/legacy/" -I$(CUDA_INC)
+Release_Include_Path= -I$(OPENCV_INC) -I"/usr/src/linux-headers-3.2.0-33/arch/um/include/shared" -I$(LEGACY_INC) -I$(CUDA_INC)	
 
 # Library paths...
 CUDA_LIB=/usr/local/cuda/lib64
