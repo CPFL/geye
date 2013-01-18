@@ -14,9 +14,9 @@ extern "C"
 __global__
 void
 process_root(
- double *A,  
- double *B, 
- double *C, 
+ FLOAT *A,  
+ FLOAT *B, 
+ FLOAT *C, 
  int *A_dims_array, 
  int *B_dims_array, 
  int len,
@@ -44,7 +44,7 @@ process_root(
     int num_features = A_dims[2];
     const int A_SQ = A_dims[0]*A_dims[1];
     const int B_SQ = B_dims[0]*B_dims[1];
-    double add_val = 0;
+    FLOAT add_val = 0;
     
     int x = idx_x;
     int y = idx_y;
@@ -61,7 +61,7 @@ process_root(
     
     
     /* adjust the location of pointer of C */
-    double *dst;
+    FLOAT *dst;
     unsigned long long int pointer = (unsigned long long int)C;
 
     for(int a=interval; a<level; a++){
@@ -75,7 +75,7 @@ process_root(
           return;
         }
         
-        pointer += (unsigned long long int)(height*width*sizeof(double));
+        pointer += (unsigned long long int)(height*width*sizeof(FLOAT));
        
       }
     }
@@ -90,10 +90,10 @@ process_root(
         return;
       }
       
-      pointer += (unsigned long long int)(height*width*sizeof(double));
+      pointer += (unsigned long long int)(height*width*sizeof(FLOAT));
     }
     
-    dst = (double *)pointer;
+    dst = (FLOAT *)pointer;
     
     
     //    if(ii==0 && idx_x==0 && idx_y==0 && level == interval){
@@ -108,22 +108,22 @@ process_root(
     /* adjust the location of pointer of A */
     unsigned long long int pointerA = (unsigned long long int)A;
     for(int a=0; a<level; a++) {
-      pointerA += (unsigned long long int)(A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2]*sizeof(double));
+      pointerA += (unsigned long long int)(A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2]*sizeof(FLOAT));
     } 
     
     
     /* adjust the location of pointer of B */
     unsigned long long int pointerB = (unsigned long long int)B;
     for(int b=0; b<ii; b++) {
-      pointerB += (unsigned long long int)(B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2]*sizeof(double));
+      pointerB += (unsigned long long int)(B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2]*sizeof(FLOAT));
     } 
 
             
     for(int f = 0; f < num_features; f++) // num_features = 31
       {  
-        //double *dst = C[ii];  
-        double *A_src = (double *)pointerA + f*A_SQ;      
-        double *B_src = (double *)pointerB + f*B_SQ;     
+        //FLOAT *dst = C[ii];  
+        FLOAT *A_src = (FLOAT *)pointerA + f*A_SQ;      
+        FLOAT *B_src = (FLOAT *)pointerB + f*B_SQ;     
         
         //        int XA0 = 0;
         //        int x = idx_x;
@@ -131,19 +131,19 @@ process_root(
         //{		
         
         //        XA0 = A_dims[0]*x;
-        double *A_src2 =A_src+XA0; 
+        FLOAT *A_src2 =A_src+XA0; 
         // XA0+=A_dims[0];
         //        int y = idx_y;
         //for (int y = 0; y < C_dims[0]; y++) 
         //{
-        double val = 0;
-        double *A_off = A_src2+y;
-        double *B_off = B_src;
+        FLOAT val = 0;
+        FLOAT *A_off = A_src2+y;
+        FLOAT *B_off = B_src;
         
         for (int xp = 0; xp < B_dims[1]; xp++) 
           {
-            double *A_temp = A_off;						
-            double *B_temp = B_off;	  
+            FLOAT *A_temp = A_off;						
+            FLOAT *B_temp = B_off;	  
             for (int yp = 0; yp < B_dims[0]; yp++) 	  
               {
                 val += *(A_temp++) * *(B_temp++);
@@ -165,8 +165,8 @@ process_root(
 
     
     //     if(ii==0 && idx_x==0 && idx_y==0 && level == interval){
-    //       printf("sizeof(double) in GPU %llu\n", (unsigned long long int)sizeof(double));
-    //       printf("sizeof(double*) in GPU %llu\n", (unsigned long long int)sizeof(double*));
+    //       printf("sizeof(FLOAT) in GPU %llu\n", (unsigned long long int)sizeof(FLOAT));
+    //       printf("sizeof(FLOAT*) in GPU %llu\n", (unsigned long long int)sizeof(FLOAT*));
     //       printf("sizeof(unsigned long int) in GPU %llu\n", (unsigned long long int)sizeof(unsigned long int));
     //       printf("sizeof(unsigned long long int) in GPU %llu\n", (unsigned long long int)sizeof(unsigned long long int));
     //       printf("%f\n", *(dst + (idx_x*C_dims[0] + idx_y)));
@@ -191,9 +191,9 @@ extern "C"
 __global__
 void
 process_part(
- double *A,  
- double *B, 
- double *C, 
+ FLOAT *A,  
+ FLOAT *B, 
+ FLOAT *C, 
  int *A_dims_array, 
  int *B_dims_array, 
  int len,
@@ -222,7 +222,7 @@ process_part(
     int num_features = A_dims[2];
     const int A_SQ = A_dims[0]*A_dims[1];
     const int B_SQ = B_dims[0]*B_dims[1];
-    double add_val = 0;
+    FLOAT add_val = 0;
 
     int x = idx_x;
     int y = idx_y;
@@ -236,7 +236,7 @@ process_part(
     
 
     /* adjust the location of pointer of C */
-    double *dst;
+    FLOAT *dst;
     unsigned long long int pointer = (unsigned long long int)C;
     for(int a=0; a<level; a++) {
       //for(int b=0; b<ii; b++){
@@ -250,7 +250,7 @@ process_part(
           return;
         }
         
-        pointer += (unsigned long long int)(height*width*sizeof(double));
+        pointer += (unsigned long long int)(height*width*sizeof(FLOAT));
       }
     }
 
@@ -264,29 +264,29 @@ process_part(
           return;
         }
 
-      pointer += (unsigned long long int)(height*width*sizeof(double));
+      pointer += (unsigned long long int)(height*width*sizeof(FLOAT));
     }
     
 
-    dst = (double *)pointer;
+    dst = (FLOAT *)pointer;
 
     /* adjust the location of pointer of A */
     unsigned long long int pointerA = (unsigned long long int)A;
     for(int a=0; a<level; a++) {
-      pointerA += (unsigned long long int)(A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2]*sizeof(double));
+      pointerA += (unsigned long long int)(A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2]*sizeof(FLOAT));
     } 
     
     /* adjust the location of pointer of B */
     unsigned long long int pointerB = (unsigned long long int)B;
     for(int b=0; b<ii; b++) {
-      pointerB += (unsigned long long int)(B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2]*sizeof(double));
+      pointerB += (unsigned long long int)(B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2]*sizeof(FLOAT));
     } 
     
     for(int f = 0; f < num_features; f++) // num_features = 31
       {  
-        //double *dst = C[ii];  
-        double *A_src = (double *)pointerA + f*A_SQ;      
-        double *B_src = (double *)pointerB + f*B_SQ;     
+        //FLOAT *dst = C[ii];  
+        FLOAT *A_src = (FLOAT *)pointerA + f*A_SQ;      
+        FLOAT *B_src = (FLOAT *)pointerB + f*B_SQ;     
         
         //        int XA0 = 0;
         //        int x = idx_x;
@@ -294,19 +294,19 @@ process_part(
         //{		
         
         //        XA0 = A_dims[0]*x;
-        double *A_src2 =A_src+XA0; 
+        FLOAT *A_src2 =A_src+XA0; 
         // XA0+=A_dims[0];
         //        int y = idx_y;
         //for (int y = 0; y < C_dims[0]; y++) 
         //{
-        double val = 0;
-        double *A_off = A_src2+y;
-        double *B_off = B_src;
+        FLOAT val = 0;
+        FLOAT *A_off = A_src2+y;
+        FLOAT *B_off = B_src;
         
         for (int xp = 0; xp < B_dims[1]; xp++) 
           {
-            double *A_temp = A_off;						
-            double *B_temp = B_off;	  
+            FLOAT *A_temp = A_off;						
+            FLOAT *B_temp = B_off;	  
             for (int yp = 0; yp < B_dims[0]; yp++) 	  
               {
                 val += *(A_temp++) * *(B_temp++);

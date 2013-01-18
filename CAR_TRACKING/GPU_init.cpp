@@ -43,7 +43,8 @@ void init_cuda(void)
 
 
     CUresult res;
-    const char file_name[43] = "./gccDebug/GPU_function.cubin";
+    //const char file_name[43] = "./gccDebug/GPU_function.cubin";
+    const char file_name[43] = "./gccRelease/GPU_function.cubin";
     
     /* initnialize GPU */
     res = cuInit(0);

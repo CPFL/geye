@@ -40,6 +40,8 @@ using namespace std;
 #include "MODEL_info.h"		//File information
 #include "Common.h"
 
+#include "switch_float.h"
+
 #ifndef WIN32
 #define __stdcall void*
 typedef void *HANDLE;
@@ -59,39 +61,39 @@ typedef long LONG_PTR;
 #define eps 0.0001
 
 //definition of sin and cos
-const double Hcos[9]={1.0000,0.9397,0.7660,0.5000,0.1736,-0.1736,-0.5000,-0.7660,-0.9397};
-const double Hsin[9]={0.0000,0.3420,0.6428,0.8660,0.9848,0.9848,0.8660,0.6428,0.3420};
+const FLOAT Hcos[9]={1.0000,0.9397,0.7660,0.5000,0.1736,-0.1736,-0.5000,-0.7660,-0.9397};
+const FLOAT Hsin[9]={0.0000,0.3420,0.6428,0.8660,0.9848,0.9848,0.8660,0.6428,0.3420};
 
 //definition of structure
 struct thread_data {
-	double *IM;
+	FLOAT *IM;
 	int ISIZE[3];
 	int FSIZE[2];
 	int F_C;
 	int sbin;
-	double *Out;
+	FLOAT *Out;
 };
 
 //inline functions
 
 static inline int max_i(int x,int y);									//return maximum number (integer)
 static inline int min_i(int x,int y);									//return minimum number (integer)
-static inline double min_2(double x);									//compare double with 0.2
+static inline FLOAT min_2(FLOAT x);									//compare FLOAT with 0.2
 
 //initialization functions 
-double *ini_scales(Model_info *MI,IplImage *IM,int X,int Y);			//initialize scales (extended to main)
+FLOAT *ini_scales(Model_info *MI,IplImage *IM,int X,int Y);			//initialize scales (extended to main)
 int *ini_featsize(Model_info *MI);										//initialize feature size information matrix (extended to main)
 
 //subfunction
-double *Ipl_to_double(IplImage *Input);														//get intensity data (double) of input
-void free_features(double **features,Model_info *MI);										//release features
-double *calc_feature(double *SRC,int *ISIZE,int *FTSIZE,int sbin);							//calculate HOG features
-void ini_thread_data(thread_data *TD,double *IM,int *INSIZE,int sbin,int level);			//for thread-initialization
+FLOAT *Ipl_to_FLOAT(IplImage *Input);														//get intensity data (FLOAT) of input
+void free_features(FLOAT **features,Model_info *MI);										//release features
+FLOAT *calc_feature(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin);							//calculate HOG features
+void ini_thread_data(thread_data *TD,FLOAT *IM,int *INSIZE,int sbin,int level);			//for thread-initialization
 //unsigned __stdcall feat_calc(void *thread_arg);												//for thread_process													
 void* feat_calc(void *thread_arg); //for thread_process													
 
 //main function to calculate feature pyramid
-double **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,double *scale);		//calculate feature pyramid (extended to detect.c)
+FLOAT **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,FLOAT *scale);		//calculate feature pyramid (extended to detect.c)
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -100,7 +102,7 @@ double **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,double *scale
 //external function
 
 //resize.cpp
-extern double *resize(double *src,int *sdims,int *odims,double scale);						//resize image 
+extern FLOAT *resize(FLOAT *src,int *sdims,int *odims,FLOAT scale);						//resize image 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -118,8 +120,8 @@ static inline int max_i(int x,int y) {return (x >= y ? x : y); }
 //return minimum number (integer)
 static inline int min_i(int x,int y) {return (x <= y ? x : y); }
 
-//return minimum number (double)
-static inline double min_2(double x) {return (x <= 0.2 ? x :0.2); }
+//return minimum number (FLOAT)
+static inline FLOAT min_2(FLOAT x) {return (x <= 0.2 ? x :0.2); }
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -132,7 +134,7 @@ static inline double min_2(double x) {return (x <= 0.2 ? x :0.2); }
 //initialization functions
 
 //initialize scales
-double *ini_scales(Model_info *MI,IplImage *IM,int X,int Y) //X,Y length of image 
+FLOAT *ini_scales(Model_info *MI,IplImage *IM,int X,int Y) //X,Y length of image 
 {
 
 	int interval,max_scale;
@@ -143,15 +145,15 @@ double *ini_scales(Model_info *MI,IplImage *IM,int X,int Y) //X,Y length of imag
 		//MI->interval/=2;	//reduce calculation time
 		const int sbin = MI->sbin;
 		interval = MI->interval;
-		const double sc = pow(2.0,(1/(double)interval));//èkè¨î‰Çï\ÇµÇƒÇ¢ÇÈÅB
-		const double minsize = double(min_i(X,Y));
+		const FLOAT sc = pow(2.0,(1/(double)interval));//èkè¨î‰Çï\ÇµÇƒÇ¢ÇÈÅB
+		const FLOAT minsize = FLOAT(min_i(X,Y));
 		const int numcomponent = MI->numcomponent;
-		//max_scale = 1+int(floor(log(minsize/(5*double(sbin)))/log(sc)));
+		//max_scale = 1+int(floor(log(minsize/(5*FLOAT(sbin)))/log(sc)));
 		max_scale = 36;
 		const int L_NUM = interval+max_scale;
 
-		double MRY =(double)MI->rsize[0];
-		double MRX =(double)MI->rsize[1];
+		FLOAT MRY =(FLOAT)MI->rsize[0];
+		FLOAT MRX =(FLOAT)MI->rsize[1];
 		   
 		for(int kk=1;kk<numcomponent;kk++)
 		{
@@ -162,9 +164,9 @@ double *ini_scales(Model_info *MI,IplImage *IM,int X,int Y) //X,Y length of imag
 		MRY/=2;
 		MRX/=2;
 
-		double height =(double)IM->height/(double)sbin;
-		double width = (double)IM->width/(double)sbin;
-		double sc_step =1/sc;   //èkè¨ó¶
+		FLOAT height =(FLOAT)IM->height/(FLOAT)sbin;
+		FLOAT width = (FLOAT)IM->width/(FLOAT)sbin;
+		FLOAT sc_step =1/sc;   //èkè¨ó¶
 
 		for(int kk=0;kk<L_NUM;kk++)
 		{
@@ -193,7 +195,7 @@ double *ini_scales(Model_info *MI,IplImage *IM,int X,int Y) //X,Y length of imag
 	}
 
 	//return
-	double *scales = (double*)calloc((max_scale+interval),sizeof(double));		//Model information
+	FLOAT *scales = (FLOAT*)calloc((max_scale+interval),sizeof(FLOAT));		//Model information
 	return(scales);
 }
 
@@ -206,7 +208,7 @@ double *ini_scales(Model_info *MI,IplImage *IM,int X,int Y) //X,Y length of imag
 int *ini_featsize(Model_info *MI)
 {
 	const int LofFeat=MI->max_scale+MI->interval;
-	int *featsize = (int*)calloc(LofFeat*2,sizeof(double)); // feature size information matrix
+	int *featsize = (int*)calloc(LofFeat*2,sizeof(FLOAT)); // feature size information matrix
 	return(featsize);
 }
 
@@ -219,7 +221,7 @@ int *ini_featsize(Model_info *MI)
 
 //calculate HOG features from Image
 //HOG features are calculated for each block(BSL*BSL pixels)
-double *calc_feature(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
+FLOAT *calc_feature(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin)
 {
 	//input size 
 	const int height=ISIZE[0]; //{268,268,134,67,233,117,203,203,177,154,89,203,154,77}
@@ -242,79 +244,79 @@ double *calc_feature(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 	const int vp0=dims[0]-2;
 	const int vp1=dims[1]-2;
 	const int SQUARE =dims[0]*dims[1];
-	const double SBIN = double(sbin);
+	const FLOAT SBIN = FLOAT(sbin);
 	
 
 	//HOG Histgram and Norm
-	double *HHist = (double*)calloc(BLOCK_SQ*18,sizeof(double));	// HOG histgram
-	double *Norm = (double*)calloc(BLOCK_SQ,sizeof(double));		// Norm
+	FLOAT *HHist = (FLOAT*)calloc(BLOCK_SQ*18,sizeof(FLOAT));	// HOG histgram
+	FLOAT *Norm = (FLOAT*)calloc(BLOCK_SQ,sizeof(FLOAT));		// Norm
 
 	//feature(Output)
-	double *feat=(double*)calloc(OUT_SIZE[0]*OUT_SIZE[1]*OUT_SIZE[2],sizeof(double));
+	FLOAT *feat=(FLOAT*)calloc(OUT_SIZE[0]*OUT_SIZE[1]*OUT_SIZE[2],sizeof(FLOAT));
 
 	//calculate HOG histgram
 	for(int x=1;x<vis_R[1];x++)
 	{
 		//parameters for interpolation
-		double xp=((double)x+0.5)/SBIN-0.5;
+		FLOAT xp=((FLOAT)x+0.5)/SBIN-0.5;
 		int ixp=(int)floor(xp);
 		int ixpp=ixp+1;
 		int ixp_b  = ixp * blocks[0];	
 		int ixpp_b = ixp_b + blocks[0];
-		double vx0=xp-(double)ixp;	
-		double vx1=1.0-vx0;
+		FLOAT vx0=xp-(FLOAT)ixp;	
+		FLOAT vx1=1.0-vx0;
 		bool flag1=true,flag2=true,flagX=true;
 		if(ixp<0) {flag1=false;flagX=false;}
 		if(ixpp>=blocks[1]) {flag2=false;flagX=false;}
 		int YC=min_i(x,vp1)*dims[0];
-		double *SRC_YC = SRC+YC;
+		FLOAT *SRC_YC = SRC+YC;
 
 		for(int y=1;y<vis_R[0];y++)
 		{
 			//first color channel
-			double *s=SRC_YC+min_i(y,vp0);
-			double dy=*(s+1)-*(s-1);
-			double dx=*(s+dims[0])-*(s-dims[0]);
-			double v=dx*dx+dy*dy;
+			FLOAT *s=SRC_YC+min_i(y,vp0);
+			FLOAT dy=*(s+1)-*(s-1);
+			FLOAT dx=*(s+dims[0])-*(s-dims[0]);
+			FLOAT v=dx*dx+dy*dy;
 
 			//second color channel
 			s+=SQUARE;
-			double dy2=*(s+1)-*(s-1);
-			double dx2=*(s+dims[0])-*(s-dims[0]);
-			double v2=dx2*dx2+dy2*dy2;
+			FLOAT dy2=*(s+1)-*(s-1);
+			FLOAT dx2=*(s+dims[0])-*(s-dims[0]);
+			FLOAT v2=dx2*dx2+dy2*dy2;
 
 			//third color channel
 			s+=SQUARE;
-			double dy3=*(s+1)-*(s-1);
-			double dx3=*(s+dims[0])-*(s-dims[0]);
-			double v3=dx3*dx3+dy3*dy3;
+			FLOAT dy3=*(s+1)-*(s-1);
+			FLOAT dx3=*(s+dims[0])-*(s-dims[0]);
+			FLOAT v3=dx3*dx3+dy3*dy3;
 
 			//pick channel with strongest gradient
 			if(v2>v){v=v2;dx=dx2;dy=dy2;}
 			if(v3>v){v=v3;dx=dx3;dy=dy3;}
 
-			double best_dot=0.0;
+			FLOAT best_dot=0.0;
 			int best_o=0;
 			
 			//snap to one of 18 orientations
 			for(int o=0;o<9;o++)
 			{
-				double dot=Hcos[o]*dx+Hsin[o]*dy;
+				FLOAT dot=Hcos[o]*dx+Hsin[o]*dy;
 				if(dot>best_dot)		{best_dot=dot;best_o=o;}
 				else if (-dot>best_dot)	{best_dot=-dot;best_o=o+9;}
 			}
 
 			//Add to 4 histgrams around pixel using linear interpolation
-			double yp=((double)y+0.5)/SBIN-0.5;
+			FLOAT yp=((FLOAT)y+0.5)/SBIN-0.5;
 			int iyp=(int)floor(yp);
 			int iypp=iyp+1;
-			double vy0=yp-(double)iyp;
-			double vy1=1.0-vy0;
+			FLOAT vy0=yp-(FLOAT)iyp;
+			FLOAT vy1=1.0-vy0;
 			v=sqrt(v);
 			int ODim=best_o*BLOCK_SQ;
-			double *Htemp = HHist+ODim;
-			double vx1Xv =vx1*v;
-			double vx0Xv = vx0*v;
+			FLOAT *Htemp = HHist+ODim;
+			FLOAT vx1Xv =vx1*v;
+			FLOAT vx0Xv = vx0*v;
 
 			if(flagX)
 			{
@@ -346,13 +348,13 @@ double *calc_feature(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 	
 	for(int kk=0;kk<9;kk++)
 	{
-		double *src1=HHist+kk*BLOCK_SQ;
-		double *src2=src1+DIM_N;
-		double *dst=Norm;
-		double *end=Norm+BLOCK_SQ;
+		FLOAT *src1=HHist+kk*BLOCK_SQ;
+		FLOAT *src2=src1+DIM_N;
+		FLOAT *dst=Norm;
+		FLOAT *end=Norm+BLOCK_SQ;
 		while(dst<end)
 		{
-			double sss=*src1+*src2;
+			FLOAT sss=*src1+*src2;
 			*(dst++)+=sss*sss;
 			src1++;src2++;
 		}
@@ -361,19 +363,19 @@ double *calc_feature(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 	//compute features
 	for(int x=0;x<OUT_SIZE[1];x++)
 	{
-		double *dst_X = feat+x*OUT_SIZE[0];
+		FLOAT *dst_X = feat+x*OUT_SIZE[0];
 		int BB = x*blocks[0];		
 		int BA = BB+blocks[0];
 
-		double *pt = Norm+BA;
-		double nc1 = 1.0/sqrt(*pt+*(pt+1)+*(pt+blocks[0])+*(pt+BX)+eps);
+		FLOAT *pt = Norm+BA;
+		FLOAT nc1 = 1.0/sqrt(*pt+*(pt+1)+*(pt+blocks[0])+*(pt+BX)+eps);
 		pt = Norm+BB;
-		double nc3 = 1.0/sqrt(*pt+*(pt+1)+*(pt+blocks[0])+*(pt+BX)+eps);
+		FLOAT nc3 = 1.0/sqrt(*pt+*(pt+1)+*(pt+blocks[0])+*(pt+BX)+eps);
 
 		for(int y=0;y<OUT_SIZE[0];y++)
 		{
-			double *dst=dst_X+y;
-			double *src,*p,n1,n2,n3,n4;
+			FLOAT *dst=dst_X+y;
+			FLOAT *src,*p,n1,n2,n3,n4;
 			//calculate normarize factor
 			int yp = y+1;
 
@@ -388,16 +390,16 @@ double *calc_feature(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 			nc3 = n3;
 
 			//features for each orientations
-			double t1=0,t2=0,t3=0,t4=0;
+			FLOAT t1=0,t2=0,t3=0,t4=0;
 
 			//contrast-sensitive features(18)
 			src=HHist+BA+yp;
 			for(int kk=0;kk<18;kk++)
 			{
-				double h1=min_2(*src*n1);
-				double h2=min_2(*src*n2);
-				double h3=min_2(*src*n3);
-				double h4=min_2(*src*n4);
+				FLOAT h1=min_2(*src*n1);
+				FLOAT h2=min_2(*src*n2);
+				FLOAT h3=min_2(*src*n3);
+				FLOAT h4=min_2(*src*n4);
 				*dst=0.5*(h1+h2+h3+h4);
 				t1+=h1;
 				t2+=h2;
@@ -411,11 +413,11 @@ double *calc_feature(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 			src=HHist+BA+yp;
 			for(int kk=0;kk<9;kk++)
 			{
-				double sum = *src+*(src+DIM_N);
-				double h1=min_2(sum*n1);
-				double h2=min_2(sum*n2);
-				double h3=min_2(sum*n3);
-				double h4=min_2(sum*n4);
+				FLOAT sum = *src+*(src+DIM_N);
+				FLOAT h1=min_2(sum*n1);
+				FLOAT h2=min_2(sum*n2);
+				FLOAT h3=min_2(sum*n3);
+				FLOAT h4=min_2(sum*n4);
 				*dst=0.5*(h1+h2+h3+h4);
 				dst+=O_DIM;
 				src+=BLOCK_SQ;
@@ -454,9 +456,9 @@ double *calc_feature(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 
 //sub functions
 
-// get pixel-intensity(double)  of image(IplImage)
+// get pixel-intensity(FLOAT)  of image(IplImage)
 
-double *Ipl_to_double(IplImage *Input)	//get intensity data (double) of input
+FLOAT *Ipl_to_FLOAT(IplImage *Input)	//get intensity data (FLOAT) of input
 {
 	const int width = Input->width;
 	printf("%d\n",width);
@@ -467,12 +469,12 @@ double *Ipl_to_double(IplImage *Input)	//get intensity data (double) of input
 	const int SQ = height*width;
 	const int WS = Input->widthStep;
 
-	double *Output = (double *)malloc(sizeof(double)*height*width*nChannels);
+	FLOAT *Output = (FLOAT *)malloc(sizeof(FLOAT)*height*width*nChannels);
 	printf("%d",height*width*nChannels);
 
-	double *R= Output;
-	double *G= Output+SQ;
-	double *B= Output+2*SQ;
+	FLOAT *R= Output;
+	FLOAT *G= Output+SQ;
+	FLOAT *B= Output+2*SQ;
 	char *IDATA = Input->imageData;
 
 	//pick intensity of pixel (color)
@@ -482,11 +484,11 @@ double *Ipl_to_double(IplImage *Input)	//get intensity data (double) of input
 		for(int y=0;y<height;y++)
 		{
 			int pp = WS*y+XT;
-			*(B++)=(double)(unsigned char)IDATA[pp];	//B
+			*(B++)=(FLOAT)(unsigned char)IDATA[pp];	//B
 			pp++;
-			*(G++)=(double)(unsigned char)IDATA[pp];	//G
+			*(G++)=(FLOAT)(unsigned char)IDATA[pp];	//G
 			pp++;
-			*(R++)=(double)(unsigned char)IDATA[pp];	//R
+			*(R++)=(FLOAT)(unsigned char)IDATA[pp];	//R
 		}
 	}
 	return(Output);
@@ -507,11 +509,11 @@ double *Ipl_to_double(IplImage *Input)	//get intensity data (double) of input
 void* feat_calc(void *thread_arg) 
 {
   thread_data *args = (thread_data *)thread_arg;
-  double *IM = args->IM;
+  FLOAT *IM = args->IM;
   int *ISIZE = args->ISIZE;
   int *FSIZE = args->FSIZE;
   int sbin = args->sbin;
-  double *Out =calc_feature(args->IM,args->ISIZE,args->FSIZE,args->sbin);			
+  FLOAT *Out =calc_feature(args->IM,args->ISIZE,args->FSIZE,args->sbin);			
   args->Out =Out;			
   //_endthreadex(0);
   //return(0);
@@ -519,7 +521,7 @@ void* feat_calc(void *thread_arg)
 }
 
 //void initialize thread data
-void ini_thread_data(thread_data *TD,double *IM,int *INSIZE,int sbin,int level)
+void ini_thread_data(thread_data *TD,FLOAT *IM,int *INSIZE,int sbin,int level)
 {
 	
 	TD->IM=IM; 
@@ -542,7 +544,7 @@ void ini_thread_data(thread_data *TD,double *IM,int *INSIZE,int sbin,int level)
 //calculate feature pyramid (extended to main.cpp)
 
 //calculate feature pyramid
-double **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,double *scale)	//calculate feature pyramid
+FLOAT **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,FLOAT *scale)	//calculate feature pyramid
 {
   //constant parameters 
   const int max_scale = MI->max_scale;
@@ -550,15 +552,15 @@ double **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,double *scale
   const int sbin = MI->sbin;
   const int sbin2 = (int)floor((double)sbin/2.0);
   const int LEN = max_scale+interval;
-  const double sc = pow(2,(1.0/(double)interval));
+  const FLOAT sc = pow(2,(1.0/(double)interval));
   int INSIZE[3]={Image->height,Image->width,Image->nChannels};
   int RISIZE[3]={0,0,0},OUTSIZE[3] ={0,0,0};
   
-  //Original image (double)
-  double *D_I = Ipl_to_double(Image);
+  //Original image (FLOAT)
+  FLOAT *D_I = Ipl_to_FLOAT(Image);
   
   //features
-  double **feat=(double**)malloc(sizeof(double*)*LEN);		//Model information
+  FLOAT **feat=(FLOAT**)malloc(sizeof(FLOAT*)*LEN);		//Model information
   
   //thread for feature calculation
   unsigned threadID;
@@ -566,16 +568,16 @@ double **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,double *scale
   //HANDLE *ts = (HANDLE *)calloc(LEN, sizeof(HANDLE));	
   pthread_t *ts = (pthread_t *)calloc(LEN, sizeof(HANDLE));	
   
-  double **RIM_S =(double**)calloc(LEN,sizeof(double*));	
+  FLOAT **RIM_S =(FLOAT**)calloc(LEN,sizeof(FLOAT*));	
   
   int *RI_S = (int*)calloc(interval*3,sizeof(int));
-  double *RIM_T;
+  FLOAT *RIM_T;
   int t_count=0;
   
   //calculate resized image 
   for(int ii=0;ii<interval;ii++) 
     {
-      double st = 1.0/pow(sc,ii);
+      FLOAT st = 1.0/pow(sc,ii);
       RIM_S[ii] = resize(D_I,INSIZE,RISIZE,st);
       //printf("RIM_S[%d]%f\n",ii,*RIM_S[ii]);
       //memcpy_s(RI_S+ii*3,sizeof(int)*3,RISIZE,sizeof(int)*3);
@@ -584,7 +586,7 @@ double **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,double *scale
   
   for(int ii=0;ii<interval;ii++)
     {
-      double st = 1.0/pow(sc,ii);
+      FLOAT st = 1.0/pow(sc,ii);
       //memcpy_s(RISIZE,sizeof(int)*3,RI_S+ii*3,sizeof(int)*3);
       memcpy(RISIZE, RI_S+ii*3,sizeof(int)*3);
       
@@ -612,7 +614,7 @@ double **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,double *scale
       RIM_T = RIM_S[ii];		//get original image (just a copy)
       for(int jj=ii+interval;jj<max_scale;jj+=interval)
         {	
-          RIM_S[jj+interval] = resize(RIM_T,RISIZE,OUTSIZE,0.5);			//resize image (double)
+          RIM_S[jj+interval] = resize(RIM_T,RISIZE,OUTSIZE,0.5);			//resize image (FLOAT)
           //memcpy_s(RISIZE,sizeof(int)*3,OUTSIZE,sizeof(int)*3);
           memcpy(RISIZE, OUTSIZE,sizeof(int)*3);
           ini_thread_data(&td[t_count],RIM_S[jj+interval],RISIZE,sbin,jj+interval); //initialize thread
@@ -667,7 +669,7 @@ double **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,double *scale
 //release function
 //release feature pyramid
 
-void free_features(double **features,Model_info *MI)
+void free_features(FLOAT **features,Model_info *MI)
 {
 	int LofFeat=MI->max_scale+MI->interval;
 	if(features!=NULL)
@@ -680,7 +682,7 @@ void free_features(double **features,Model_info *MI)
 	}
 }
 
-double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
+FLOAT *calc_feature1(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin)
 {
 	
 	//input size 
@@ -705,15 +707,15 @@ double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 	const int vp0=dims[0]-2;
 	const int vp1=dims[1]-2;
 	const int SQUARE =dims[0]*dims[1];
-	const double SBIN = double(sbin);
+	const FLOAT SBIN = FLOAT(sbin);
 
 	//HOG Histgram and Norm
-	double *HHist = (double*)calloc(BLOCK_SQ*18,sizeof(double));	// HOG histgram
-	double *Norm = (double*)calloc(BLOCK_SQ,sizeof(double));		// Norm
+	FLOAT *HHist = (FLOAT*)calloc(BLOCK_SQ*18,sizeof(FLOAT));	// HOG histgram
+	FLOAT *Norm = (FLOAT*)calloc(BLOCK_SQ,sizeof(FLOAT));		// Norm
 	int X;int Y,A,B;
 
 	int BBQ =2* visible[0] * visible[1];
-	double *hozonn=(double*)calloc(BBQ,sizeof(double));
+	FLOAT *hozonn=(FLOAT*)calloc(BBQ,sizeof(FLOAT));
 	int *locate=(int*)calloc(BBQ/2,sizeof(int));
 	int *locate2=(int*)calloc(BLOCK_SQ ,sizeof(int));
 
@@ -723,7 +725,7 @@ double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 	}
 
 	//feature(Output)
-	double *feat=(double*)calloc(OUT_SIZE[0]*OUT_SIZE[1]*OUT_SIZE[2],sizeof(double));
+	FLOAT *feat=(FLOAT*)calloc(OUT_SIZE[0]*OUT_SIZE[1]*OUT_SIZE[2],sizeof(FLOAT));
 	
 	//calculate HOG histgram
 	for (X=1;(X+1)<blocks[1];X++)
@@ -742,23 +744,23 @@ double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 		int bb = (Y+2) * sbin + sbin/2;
 		if (Y == 1){b = 1;bb1 = 0;}
 		if ((Y+2)==blocks[0]){bb =vis_R[0]; bb1 =blocks[0];}
-		double v;int best_o;
+		FLOAT v;int best_o;
 
 			for(int x=a;x<aa;x++)
 			{
 				//parameters for interpolation
-				double xp=((double)x+0.5)/SBIN-0.5;
+				FLOAT xp=((FLOAT)x+0.5)/SBIN-0.5;
 				int ixp=(int)floor(xp);
 				int ixpp=ixp+1;
 				int ixp_b  = ixp * blocks[0];
 				int ixpp_b = ixp_b + blocks[0];
-				double vx0=xp-(double)ixp;	
-				double vx1=1.0-vx0;
+				FLOAT vx0=xp-(FLOAT)ixp;	
+				FLOAT vx1=1.0-vx0;
 				bool flag1=true,flag2=true,flagX=true;
 				if(ixp<0) {flag1=false;flagX=false;}
 				if(ixpp>=blocks[1]) {flag2=false;flagX=false;}
 				int YC=min_i(x,vp1)*dims[0];
-				double *SRC_YC = SRC+YC;
+				FLOAT *SRC_YC = SRC+YC;
 
 				for(int y=b;y<bb;y++)
 				{
@@ -766,34 +768,34 @@ double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 					if (*(locate+x*(vis_R[0])+y) == 1){break;}
 
 					//first color channel
-					double *s=SRC_YC+min_i(y,vp0);
-					double dy=*(s+1)-*(s-1);
-					double dx=*(s+dims[0])-*(s-dims[0]);
-					double v=dx*dx+dy*dy;
+					FLOAT *s=SRC_YC+min_i(y,vp0);
+					FLOAT dy=*(s+1)-*(s-1);
+					FLOAT dx=*(s+dims[0])-*(s-dims[0]);
+					FLOAT v=dx*dx+dy*dy;
 
 					//second color channel
 					s+=SQUARE;
-					double dy2=*(s+1)-*(s-1);
-					double dx2=*(s+dims[0])-*(s-dims[0]);
-					double v2=dx2*dx2+dy2*dy2;
+					FLOAT dy2=*(s+1)-*(s-1);
+					FLOAT dx2=*(s+dims[0])-*(s-dims[0]);
+					FLOAT v2=dx2*dx2+dy2*dy2;
 
 					//third color channel
 					s+=SQUARE;
-					double dy3=*(s+1)-*(s-1);
-					double dx3=*(s+dims[0])-*(s-dims[0]);
-					double v3=dx3*dx3+dy3*dy3;
+					FLOAT dy3=*(s+1)-*(s-1);
+					FLOAT dx3=*(s+dims[0])-*(s-dims[0]);
+					FLOAT v3=dx3*dx3+dy3*dy3;
 
 					//pick channel with strongest gradient
 					if(v2>v){v=v2;dx=dx2;dy=dy2;}
 					if(v3>v){v=v3;dx=dx3;dy=dy3;}
 
-					double best_dot=0.0;
+					FLOAT best_dot=0.0;
 					int best_o=0;
 			
 					//snap to one of 18 orientations
 					for(int o=0;o<9;o++)
 					{
-						double dot=Hcos[o]*dx+Hsin[o]*dy;
+						FLOAT dot=Hcos[o]*dx+Hsin[o]*dy;
 						if(dot>best_dot)		{best_dot=dot;best_o=o;}
 						else if (-dot>best_dot)	{best_dot=-dot;best_o=o+9;}
 					}
@@ -804,16 +806,16 @@ double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 
 
 					//Add to 4 histgrams around pixel using linear interpolation
-					double yp=((double)y+0.5)/SBIN-0.5;
+					FLOAT yp=((FLOAT)y+0.5)/SBIN-0.5;
 					int iyp=(int)floor(yp);
 					int iypp=iyp+1;
-					double vy0=yp-(double)iyp;
-					double vy1=1.0-vy0;
+					FLOAT vy0=yp-(FLOAT)iyp;
+					FLOAT vy1=1.0-vy0;
 					v=sqrt(v);
 					int ODim=best_o*BLOCK_SQ;
-					double *Htemp = HHist+ODim;
-					double vx1Xv =vx1*v;
-					double vx0Xv = vx0*v;
+					FLOAT *Htemp = HHist+ODim;
+					FLOAT vx1Xv =vx1*v;
+					FLOAT vx0Xv = vx0*v;
 
 					if(flagX)
 					{
@@ -845,7 +847,7 @@ double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 	  	  	
 
 	//compute energy in each block by summing over orientations
-	double *ttt;
+	FLOAT *ttt;
 	for(A= a1;A<aa1;A++)
 		{
 			for(B=b1;B<bb1;B++)
@@ -856,9 +858,9 @@ double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 				{
 				if (*(locate2+A*blocks[0]+B) == 1){break;}
 				ttt = Norm+blocks[0]*A+B;
-				double *src1=HHist+blocks[0]*A+B+kk*BLOCK_SQ;
-				double *src2=src1+DIM_N;
-				double sss=*src1+*src2;
+				FLOAT *src1=HHist+blocks[0]*A+B+kk*BLOCK_SQ;
+				FLOAT *src2=src1+DIM_N;
+				FLOAT sss=*src1+*src2;
 				*ttt+=sss*sss;
 				}
 				*(locate2+A*blocks[0]+B) = 1;
@@ -869,18 +871,18 @@ double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 	}
 		/*printf("HHist%f\n",*(HHist));*/
 	
-	/*double *ttt=Norm+blocks[0]*X+Y;
+	/*FLOAT *ttt=Norm+blocks[0]*X+Y;
 	for(X = 0;X<blocks[1];X++)
 		{
 			for(Y = 0;Y<blocks[0];Y++)
 			{   
 				for(int kk=0;kk<9;kk++)
 				{
-				double *ttt=Norm+blocks[0]*X+Y;
-				double *src1=HHist+blocks[0]*X+Y+kk*BLOCK_SQ;
-				double *src2=src1+DIM_N;
+				FLOAT *ttt=Norm+blocks[0]*X+Y;
+				FLOAT *src1=HHist+blocks[0]*X+Y+kk*BLOCK_SQ;
+				FLOAT *src2=src1+DIM_N;
 
-				double sss=*src1+*src2;
+				FLOAT sss=*src1+*src2;
 				*ttt+=sss*sss;
 				}
 				ttt++;
@@ -888,13 +890,13 @@ double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 		}*/
 
 	//compute features
-	double n1,n2,n3,n4;
+	FLOAT n1,n2,n3,n4;
 	for(int X=0;X<OUT_SIZE[1];X++)
 	{
 		for(int Y=0;Y<OUT_SIZE[0];Y++)
 		{
-		double *dst = feat+X*OUT_SIZE[0]+Y;
-		double *pt = Norm+(X+1)*blocks[0]+(Y+1);
+		FLOAT *dst = feat+X*OUT_SIZE[0]+Y;
+		FLOAT *pt = Norm+(X+1)*blocks[0]+(Y+1);
 		n4 = 1.0/sqrt(*pt+*(pt-1)+*(pt-blocks[0])+*(pt-blocks[0]-1)+eps);
 		n2 = 1.0/sqrt(*pt+*(pt-1)+*(pt+blocks[0])+*(pt+blocks[0]-1)+eps);
 		n3 = 1.0/sqrt(*pt+*(pt+1)+*(pt-blocks[0])+*(pt+blocks[0]+1)+eps);
@@ -903,16 +905,16 @@ double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 		
 
 			//features for each orientations
-			double t1=0,t2=0,t3=0,t4=0;
+			FLOAT t1=0,t2=0,t3=0,t4=0;
 
 			//contrast-sensitive features(18)
-			double *src=HHist+(X+1)*blocks[0]+Y+1;
+			FLOAT *src=HHist+(X+1)*blocks[0]+Y+1;
 			for(int kk=0;kk<18;kk++)
 			{
-				double h1=min_2(*src*n1);
-				double h2=min_2(*src*n2);
-				double h3=min_2(*src*n3);
-				double h4=min_2(*src*n4);
+				FLOAT h1=min_2(*src*n1);
+				FLOAT h2=min_2(*src*n2);
+				FLOAT h3=min_2(*src*n3);
+				FLOAT h4=min_2(*src*n4);
 				*dst=0.5*(h1+h2+h3+h4);
 				t1+=h1;
 				t2+=h2;
@@ -926,11 +928,11 @@ double *calc_feature1(double *SRC,int *ISIZE,int *FTSIZE,int sbin)
 			src=HHist+(X+1)*blocks[0]+Y+1;
 			for(int kk=0;kk<9;kk++)
 			{
-				double sum = *src+*(src+DIM_N);
-				double h1=min_2(sum*n1);
-				double h2=min_2(sum*n2);
-				double h3=min_2(sum*n3);
-				double h4=min_2(sum*n4);
+				FLOAT sum = *src+*(src+DIM_N);
+				FLOAT h1=min_2(sum*n1);
+				FLOAT h2=min_2(sum*n2);
+				FLOAT h3=min_2(sum*n3);
+				FLOAT h4=min_2(sum*n4);
 				*dst=0.5*(h1+h2+h3+h4);
 				dst+=O_DIM;
 				src+=BLOCK_SQ;

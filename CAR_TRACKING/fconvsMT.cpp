@@ -12,13 +12,13 @@
 #include "for_use_GPU.h"
 
 
-double ***fconvsMT_GPU(CUdeviceptr featp2_dev, double **filter,int *sym_info,int start,int end,int *A_SIZE, CUdeviceptr A_SIZE_dev, int **B_SIZE,int **M_size_array, int L_MAX, int interval, int *FSIZE, int padx, int pady, int max_X, int max_Y, int calc_flag)
+FLOAT ***fconvsMT_GPU(CUdeviceptr featp2_dev, FLOAT **filter,int *sym_info,int start,int end,int *A_SIZE, CUdeviceptr A_SIZE_dev, int **B_SIZE,int **M_size_array, int L_MAX, int interval, int *FSIZE, int padx, int pady, int max_X, int max_Y, int calc_flag)
 {
   start=start-1;
   end=end-1;
   
   const int len=end-start+1;
-  double ***Output = (double ***)malloc(L_MAX*sizeof(double **));  // make double* Output[L_MAX][len]
+  FLOAT ***Output = (FLOAT ***)malloc(L_MAX*sizeof(FLOAT **));  // make FLOAT* Output[L_MAX][len]
   
 
 
@@ -55,20 +55,20 @@ double ***fconvsMT_GPU(CUdeviceptr featp2_dev, double **filter,int *sym_info,int
   /* prepare output region */
   
   /* allocate output region in lump */
-  double **dst_output;
-  dst_output = (double **)malloc(L_MAX*len*sizeof(double *));
+  FLOAT **dst_output;
+  dst_output = (FLOAT **)malloc(L_MAX*len*sizeof(FLOAT *));
   if(dst_output == NULL) {
     printf("allocate dst_output failed\n");
     exit(1);
   }
 
-  memset(dst_output, 0, L_MAX*len*sizeof(double *));  // zero clear
+  memset(dst_output, 0, L_MAX*len*sizeof(FLOAT *));  // zero clear
 
   /* distribution to Output[L_MAX - interval]*/
   unsigned long long int ptr_output = (unsigned long long int)dst_output;
   for(int i=0; i<L_MAX; i++) {
-    Output[i] = (double **)ptr_output;
-    ptr_output += (unsigned long long int)(len*sizeof(double *));
+    Output[i] = (FLOAT **)ptr_output;
+    ptr_output += (unsigned long long int)(len*sizeof(FLOAT *));
   }
   
   /* prepare output region */
@@ -85,7 +85,7 @@ double ***fconvsMT_GPU(CUdeviceptr featp2_dev, double **filter,int *sym_info,int
       B_dimension[ii*3 + 2] = 31;
       
       
-      SUM_SIZE_B += B_dimension[ii*3]*B_dimension[ii*3 + 1]*B_dimension[ii*3 + 2]*sizeof(double);
+      SUM_SIZE_B += B_dimension[ii*3]*B_dimension[ii*3 + 1]*B_dimension[ii*3 + 2]*sizeof(FLOAT);
       
 	}  //for(len)
   
@@ -145,7 +145,7 @@ double ***fconvsMT_GPU(CUdeviceptr featp2_dev, double **filter,int *sym_info,int
         td[level][jj].C_dims[0]=height; 
         td[level][jj].C_dims[1]=width;
         
-        SUM_SIZE_C += td[level][jj].C_dims[0]*td[level][jj].C_dims[1]*sizeof(double);
+        SUM_SIZE_C += td[level][jj].C_dims[0]*td[level][jj].C_dims[1]*sizeof(FLOAT);
         
         M_size_array[level][jj*2]=height;
         M_size_array[level][jj*2+1]=width;
@@ -155,7 +155,7 @@ double ***fconvsMT_GPU(CUdeviceptr featp2_dev, double **filter,int *sym_info,int
         td[L][jj].C_dims[0]=height; 
         td[L][jj].C_dims[1]=width;
         
-        SUM_SIZE_C += td[L][jj].C_dims[0]*td[L][jj].C_dims[1]*sizeof(double);
+        SUM_SIZE_C += td[L][jj].C_dims[0]*td[L][jj].C_dims[1]*sizeof(FLOAT);
         
         M_size_array[L][jj*2]=height;
         M_size_array[L][jj*2+1]=width;
@@ -221,8 +221,8 @@ double ***fconvsMT_GPU(CUdeviceptr featp2_dev, double **filter,int *sym_info,int
 
 
   /* calculate max size of each block dimension */
-  NR_MAXTHREADS_X = (int)sqrt((double)max_threads_num/len);
-  NR_MAXTHREADS_Y = (int)sqrt((double)max_threads_num/len);
+  NR_MAXTHREADS_X = (int)sqrt((FLOAT)max_threads_num/len);
+  NR_MAXTHREADS_Y = (int)sqrt((FLOAT)max_threads_num/len);
 
 
   thread_num_x = (max_width < NR_MAXTHREADS_X) ? max_width : NR_MAXTHREADS_X;
@@ -274,7 +274,7 @@ double ***fconvsMT_GPU(CUdeviceptr featp2_dev, double **filter,int *sym_info,int
 
 
   /* allocate output region on CPU memory */
-  double *dst_C;
+  FLOAT *dst_C;
   res = cuMemHostAlloc((void **)&dst_C, SUM_SIZE_C, CU_MEMHOSTALLOC_DEVICEMAP);
   if(res != CUDA_SUCCESS){
     printf("cuMemHostAlloc(dst_C) failed: res = %s\n", conv(res));
@@ -291,13 +291,13 @@ double ***fconvsMT_GPU(CUdeviceptr featp2_dev, double **filter,int *sym_info,int
 
       switch(calc_flag) {
       case ROOT:
-        td[level][jj].C = (double *)pointer;
-        pointer += (unsigned long long int)(td[level][jj].C_dims[0]*td[level][jj].C_dims[1]*sizeof(double));
+        td[level][jj].C = (FLOAT *)pointer;
+        pointer += (unsigned long long int)(td[level][jj].C_dims[0]*td[level][jj].C_dims[1]*sizeof(FLOAT));
         break;
 
       case PART:
-        td[L][jj].C = (double *)pointer;
-        pointer += (unsigned long long int)(td[L][jj].C_dims[0]*td[L][jj].C_dims[1]*sizeof(double));
+        td[L][jj].C = (FLOAT *)pointer;
+        pointer += (unsigned long long int)(td[L][jj].C_dims[0]*td[L][jj].C_dims[1]*sizeof(FLOAT));
         break;
 
       default:
@@ -318,7 +318,7 @@ double ***fconvsMT_GPU(CUdeviceptr featp2_dev, double **filter,int *sym_info,int
     exit(1);
   }
 #if 0
-  res = cuMemsetD32(C_dev, (double)0, (size_t)(SUM_SIZE_C / sizeof(double)));
+  res = cuMemsetD32(C_dev, (FLOAT)0, (size_t)(SUM_SIZE_C / sizeof(FLOAT)));
   if(res != CUDA_SUCCESS){
     printf("cuMemsetD32(C_dev) failed: res = %s\n", conv(res));
     exit(1);
@@ -538,8 +538,8 @@ double ***fconvsMT_GPU(CUdeviceptr featp2_dev, double **filter,int *sym_info,int
     /**************************************************************************/
     for(int jj=0; jj<len; jj++) {
       //       if(level == interval && jj == 0 && calc_flag == ROOT){
-      //         printf("sizeof(double) %llu\n", (unsigned long long int)sizeof(double));
-      //         printf("sizeof(double*) %llu\n", (unsigned long long int)sizeof(double*));
+      //         printf("sizeof(FLOAT) %llu\n", (unsigned long long int)sizeof(FLOAT));
+      //         printf("sizeof(FLOAT*) %llu\n", (unsigned long long int)sizeof(FLOAT*));
       //         printf("%f CPU \n", *td[level][jj].C);
       //         printf("%f CPU \n", dst_C[0]);
       //         //         printf("%llu CPU ad\n", (unsigned long long int)td[level][jj].C);

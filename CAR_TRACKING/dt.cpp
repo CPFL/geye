@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "switch_float.h"
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -20,22 +22,22 @@
 #define s_free(a) {free(a);a=NULL;}
 
 //sub rootine of dt
-inline void dt_helper(double *src, double *dst, int *ptr, int step, int s1, int s2, int d1, int d2, double a, double b) ;
+inline void dt_helper(FLOAT *src, FLOAT *dst, int *ptr, int step, int s1, int s2, int d1, int d2, FLOAT a, FLOAT b) ;
 //sub rootine of dt
-void dt1d(double *src, double *dst, int *ptr, int step, int n, double a, double b) ;
+void dt1d(FLOAT *src, FLOAT *dst, int *ptr, int step, int n, FLOAT a, FLOAT b) ;
 
 //add part score to root score (extended to featurepyramid.cpp)
-void add_part_calculation(double *score, double*M,int *rootsize,int *partsize,int ax,int ay);		
+void add_part_calculation(FLOAT *score, FLOAT*M,int *rootsize,int *partsize,int ax,int ay);		
 //decide best part position (extended to featurepyramid.cpp)
-double *dt(double *vals,double ax,double bx,double ay,double by,int *dims,int *Ix,int *Iy);
+FLOAT *dt(FLOAT *vals,FLOAT ax,FLOAT bx,FLOAT ay,FLOAT by,int *dims,int *Ix,int *Iy);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //add part score to root score 
-void add_part_calculation(double *score, double*M,int *rootsize,int *partsize,int ax,int ay)
+void add_part_calculation(FLOAT *score, FLOAT*M,int *rootsize,int *partsize,int ax,int ay)
 {
-	double *S = score;
+	FLOAT *S = score;
 	int jj_L = ax+2*(rootsize[1]-1)-1;
 	int ii_L = ay+2*(rootsize[0]-1);
 	int axm = ax-1;
@@ -56,14 +58,14 @@ void add_part_calculation(double *score, double*M,int *rootsize,int *partsize,in
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // dt helper function
-inline void dt_helper(double *src, double *dst, int *ptr, int step, int s1, int s2, int d1, int d2, double a, double b) 
+inline void dt_helper(FLOAT *src, FLOAT *dst, int *ptr, int step, int s1, int s2, int d1, int d2, FLOAT a, FLOAT b) 
 {
  if (d2 >= d1) 
  {
 	 int d = (d1+d2) >> 1;
 	 int ds =d*step;
 	 int s = s1;
-	 double src_ss = *(src+s*step);
+	 FLOAT src_ss = *(src+s*step);
 	 for (int p = s1+1; p <= s2; p++)
 	 {
 		 int t1 = d-s;
@@ -86,7 +88,7 @@ inline void dt_helper(double *src, double *dst, int *ptr, int step, int s1, int 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //sub function of dt 
-void dt1d(double *src, double *dst, int *ptr, int step, int n, double a, double b) 
+void dt1d(FLOAT *src, FLOAT *dst, int *ptr, int step, int n, FLOAT a, FLOAT b) 
 {
   dt_helper(src, dst, ptr, step, 0, n-1, 0, n-1, a, b);
 }
@@ -96,11 +98,11 @@ void dt1d(double *src, double *dst, int *ptr, int step, int n, double a, double 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //Decide best filter position by dynamic programing
 
-double *dt(double *vals,double ax,double bx,double ay,double by,int *dims,int *Ix,int *Iy)
+FLOAT *dt(FLOAT *vals,FLOAT ax,FLOAT bx,FLOAT ay,FLOAT by,int *dims,int *Ix,int *Iy)
 {
 	const int SQ = dims[0]*dims[1];
-	double *M = (double*)malloc(sizeof(double)*SQ);
-	double *tmpM = (double*)malloc(sizeof(double)*SQ);
+	FLOAT *M = (FLOAT*)malloc(sizeof(FLOAT)*SQ);
+	FLOAT *tmpM = (FLOAT*)malloc(sizeof(FLOAT)*SQ);
 	int *tmpIx = (int*)malloc(sizeof(int)*SQ);
 	int *tmpIy = (int*)malloc(sizeof(int)*SQ);
 	int XD=0;

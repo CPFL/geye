@@ -237,7 +237,7 @@ gccRelease/GPU_init.o: GPU_init.cpp
 
 # Compiles file GPU_function.cu for the Release configuration...
 gccRelease/GPU_function.cubin: GPU_function.cu
-	$(CUDA_COMPILER) $(Release_Compiler_Flags) -G  -o ../gccRelease/GPU_function.cubin GPU_function.cu -lcuda
+	$(CUDA_COMPILER) $(Release_Compiler_Flags) -o ../gccRelease/GPU_function.cubin GPU_function.cu -lcuda
 
 
 ######################################################################################################################################################

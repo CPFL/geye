@@ -43,6 +43,8 @@
 #include "detect_func.h"	//functions
 #include "Common.h"
 
+#include "switch_float.h"
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -53,19 +55,19 @@
 //definiton of functions//
 
 //resize Image (IplImage)
-IplImage *ipl_resize(IplImage *IM,double ratio);
+IplImage *ipl_resize(IplImage *IM,FLOAT ratio);
 
 //create and resize Iplimage 
 IplImage *ipl_cre_resize(IplImage *IM,int width,int height);
 
 //initialize accumulated score
-double *ini_ac_score(IplImage *IM);
+FLOAT *ini_ac_score(IplImage *IM);
 
 //detect object and return rectangle-box coorinate (extended to main.cpp)
-double *detect(IplImage *IM,MODEL *MO,double thresh,int *D_NUMS,double *A_SCORE);
+FLOAT *detect(IplImage *IM,MODEL *MO,FLOAT thresh,int *D_NUMS,FLOAT *A_SCORE);
 
 //detect car-boundary-boxes
-RESULT *car_detection(IplImage *IM,MODEL *MO,double thresh,int *D_NUMS,double *A_SCORE,double overlap);
+RESULT *car_detection(IplImage *IM,MODEL *MO,FLOAT thresh,int *D_NUMS,FLOAT *A_SCORE,FLOAT overlap);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -76,7 +78,7 @@ RESULT *car_detection(IplImage *IM,MODEL *MO,double thresh,int *D_NUMS,double *A
 
 
 //resize Image (IplImage)
-IplImage *ipl_resize(IplImage *IM,double ratio)
+IplImage *ipl_resize(IplImage *IM,FLOAT ratio)
 {
 	IplImage *R_I;	//Output (Resized Image)
 
@@ -94,14 +96,14 @@ IplImage *ipl_resize(IplImage *IM,double ratio)
 	CvRect REC = cvRect(0,UpY,width,NEW_Y);
 	cvSetImageROI(IM,REC);			//change ROI of Image 
 
-	if((int)((double)IM->height*ratio)==IM->height)
+	if((int)((FLOAT)IM->height*ratio)==IM->height)
 	{
 		R_I =cvCreateImage(cvSize(width,NEW_Y),depth,nChannels);
 		cvCopy(IM,R_I);		//copy
 	}
 	else
 	{
-		R_I = cvCreateImage(cvSize((int)((double)width*ratio),(int)((double)NEW_Y*ratio)),depth,nChannels);
+		R_I = cvCreateImage(cvSize((int)((FLOAT)width*ratio),(int)((FLOAT)NEW_Y*ratio)),depth,nChannels);
 		cvResize(IM,R_I);	//resize
 	}
 	cvResetImageROI(IM);
@@ -126,10 +128,10 @@ IplImage *ipl_cre_resize(IplImage *IM,int width,int height)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //initialize accumulated score
-double *ini_ac_score(IplImage *IM)
+FLOAT *ini_ac_score(IplImage *IM)
 {
 	int L = IM->height*IM->width;
-	double *A_SCORE = (double *)calloc(L,sizeof(double));
+	FLOAT *A_SCORE = (FLOAT *)calloc(L,sizeof(FLOAT));
 	for(int ii=0;ii<L;ii++) *(A_SCORE+ii)=-100.0;
 	return (A_SCORE);
 }
@@ -138,22 +140,22 @@ double *ini_ac_score(IplImage *IM)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //detect and save detected boxes
-double *detect(IplImage *IM,MODEL *MO,double thresh,int *D_NUMS,double *A_SCORE)
+FLOAT *detect(IplImage *IM,MODEL *MO,FLOAT thresh,int *D_NUMS,FLOAT *A_SCORE)
 {
 	//for time measurement
 	clock_t t1,t2,t3;
 
 	//initialize scale information for hierachical detection
-	double *scales=ini_scales(MO->MI,IM,IM->width,IM->height);
+	FLOAT *scales=ini_scales(MO->MI,IM,IM->width,IM->height);
 
 	//initialize feature-size matrix
 	int *featsize=ini_featsize(MO->MI);
 	//calculate feature pyramid
 	t1=clock();
-	double **feature=calc_f_pyramid(IM,MO->MI,featsize,scales);		
+	FLOAT **feature=calc_f_pyramid(IM,MO->MI,featsize,scales);		
 	t2=clock();
 	//detect boundary boxes
-	double *boxes = get_boxes(feature,scales,featsize,MO,D_NUMS,A_SCORE,thresh);
+	FLOAT *boxes = get_boxes(feature,scales,featsize,MO,D_NUMS,A_SCORE,thresh);
 	t3=clock();
 
 
@@ -168,10 +170,10 @@ double *detect(IplImage *IM,MODEL *MO,double thresh,int *D_NUMS,double *A_SCORE)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //detect car-boundary-boxes
-RESULT *car_detection(IplImage *IM,MODEL *MO,double thresh,int *D_NUMS,double *A_SCORE,double overlap)
+RESULT *car_detection(IplImage *IM,MODEL *MO,FLOAT thresh,int *D_NUMS,FLOAT *A_SCORE,FLOAT overlap)
 {
-	double *boxes = detect(IM,MO,thresh,D_NUMS,A_SCORE);	//detect high-score region
-	double *rects = nms(boxes,overlap,D_NUMS,MO);			//get boundary-rectangles of car
+	FLOAT *boxes = detect(IM,MO,thresh,D_NUMS,A_SCORE);	//detect high-score region
+	FLOAT *rects = nms(boxes,overlap,D_NUMS,MO);			//get boundary-rectangles of car
 	RESULT *CUR = get_new_rects(IM,MO,rects,D_NUMS);		//get current result
 
 	s_free(boxes);

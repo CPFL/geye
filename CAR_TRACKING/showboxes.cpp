@@ -36,6 +36,8 @@
 #include "Laser_info.h"
 #include "Common.h"
 
+#include "switch_float.h"
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -44,21 +46,21 @@
 
 //definiton of functions//
 CvScalar get_color(int coltype);														//define color
-void showboxes(IplImage *Image,MODEL *MO,double *boxes,int *NUM);						//show root-rectangle-boxes (extended to main.cpp)
-void show_rects(IplImage *Image,RESULT *CUR,double ratio);								//show rectangle-boxes (extended to main.cpp)
+void showboxes(IplImage *Image,MODEL *MO,FLOAT *boxes,int *NUM);						//show root-rectangle-boxes (extended to main.cpp)
+void show_rects(IplImage *Image,RESULT *CUR,FLOAT ratio);								//show rectangle-boxes (extended to main.cpp)
 void show_array(IplImage *Image,RESULT *LR,int *PP);									//show integer array(for debug)
 int *show_particles(IplImage *Image,RESULT *CUR,PINFO *P_I);							//show particles (extended to main.cpp)
-int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,double ratio);				//show velocity vector on image
-void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC,double ratio);//show velocity vector on 2DMAP
-void show_vector(IplImage *Image,IplImage *TMAP,RESULT *CUR,PINFO *P_I,double ratio);	//show vector of velocity
+int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,FLOAT ratio);				//show velocity vector on image
+void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC,FLOAT ratio);//show velocity vector on 2DMAP
+void show_vector(IplImage *Image,IplImage *TMAP,RESULT *CUR,PINFO *P_I,FLOAT ratio);	//show vector of velocity
 void show_likelihood(IplImage *Image,CvMat *LIKE,int *COORD);							//show likelihood (for debug)
-void show_det_score(IplImage *Image,double *ac_score,RESULT *CUR);						//show detector accumulated score (debug)
+void show_det_score(IplImage *Image,FLOAT *ac_score,RESULT *CUR);						//show detector accumulated score (debug)
 void print_information(void);															//print basic information of detection		
 void save_result(IplImage *Image,int fnum);												//save result image
-void ovw_det_result(IplImage *OR,IplImage *DE, double ratio);							//over-write detection result
+void ovw_det_result(IplImage *OR,IplImage *DE, FLOAT ratio);							//over-write detection result
 IplImage *load_suc_image(int fnum);														//load successive images (jpeg data)
 
-//Err?  CvVideoWriter *Ini_video(CvCapture* capture,double ratio);						//write avi-result-data
+//Err?  CvVideoWriter *Ini_video(CvCapture* capture,FLOAT ratio);						//write avi-result-data
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -86,7 +88,7 @@ CvScalar get_color(int coltype)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //show rectangle boxes(with object_tracking result)
-void show_rects(IplImage *Image,RESULT *CUR,double ratio)
+void show_rects(IplImage *Image,RESULT *CUR,FLOAT ratio)
 {		
 	//parameters 
 	const int height = Image->height;
@@ -146,11 +148,11 @@ int *show_particles(IplImage *Image,RESULT *CUR,PINFO *P_I)
 			int NUM = cond->SamplesNum;
 			if(cond->flCumulative[NUM-1]>0.0)
 			{
-				double NEXT_X =0,NEXT_Y =0;					//predicted position
-				double RATIO = 1/cond->flCumulative[NUM-1];	//total weight
+				FLOAT NEXT_X =0,NEXT_Y =0;					//predicted position
+				FLOAT RATIO = 1/cond->flCumulative[NUM-1];	//total weight
 				for(int jj=0;jj<NUM;jj++)
 				{
-					double conf = cond->flConfidence[jj];	//confidence
+					FLOAT conf = cond->flConfidence[jj];	//confidence
 					if(conf>0.0)
 					{
 						float X = cond->flSamples[jj][0];	//position
@@ -185,7 +187,7 @@ int *show_particles(IplImage *Image,RESULT *CUR,PINFO *P_I)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //show velocity-vector on image
-int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,double ratio)
+int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,FLOAT ratio)
 {	
 	//parameters 
 	const int height = Image->height;
@@ -207,7 +209,7 @@ int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,double ratio)
 		//if(cond->flCumulative[NUM-1]<0.001) continue;	//no-valid-particle
 		//for(int jj=0;jj<NUM;jj++)
 		//{
-		//	double conf = cond->flConfidence[jj];	//confidence
+		//	FLOAT conf = cond->flConfidence[jj];	//confidence
 		//	if(conf>0.0)
 		//	{
 		//		float X = cond->flSamples[jj][0];	//position
@@ -218,8 +220,8 @@ int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,double ratio)
 		//}
 		//debug
 
-		double NEXT_X = cond->State[0];	//predected position
-		double NEXT_Y = cond->State[1];
+		FLOAT NEXT_X = cond->State[0];	//predected position
+		FLOAT NEXT_Y = cond->State[1];
 
 		//caluculate rectangle coordinate
 		int *PP = CUR->point+ii*4;
@@ -232,12 +234,12 @@ int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,double ratio)
 
 		int X_MOVE = (int)NEXT_X-LAS_X;
 		int Y_MOVE = (int)NEXT_Y-LAS_Y;
-		double M_LENGTH = sqrt((double)(X_MOVE*X_MOVE+Y_MOVE*Y_MOVE));
+		FLOAT M_LENGTH = sqrt((FLOAT)(X_MOVE*X_MOVE+Y_MOVE*Y_MOVE));
 
 
 		//save vector coordinate
-		IM_V[4*ii]=(int)((double)LAS_X/ratio); 		
-		IM_V[4*ii+1]=(int)((double)LAS_Y/ratio)+UpY;
+		IM_V[4*ii]=(int)((FLOAT)LAS_X/ratio); 		
+		IM_V[4*ii+1]=(int)((FLOAT)LAS_Y/ratio)+UpY;
 		IM_V[4*ii+2]=(int)(NEXT_X/ratio); 		
 		IM_V[4*ii+3]=(int)(NEXT_Y/ratio)+UpY;
 
@@ -266,15 +268,15 @@ int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,double ratio)
 
 		if(abs(X_MOVE)>0)
 		{
-			double theata = -atan((double)Y_MOVE/(double)X_MOVE);
-			double XA1,ARL;
+			FLOAT theata = -atan((FLOAT)Y_MOVE/(FLOAT)X_MOVE);
+			FLOAT XA1,ARL;
 
 			if(M_LENGTH>10){XA1 =M_LENGTH-10; ARL=10.0;}
 			else if(M_LENGTH>5){XA1 =M_LENGTH-5; ARL=5.0;}
 			else {XA1 = M_LENGTH;ARL = 2.0;}
 
-			double COS_T = cos(theata);
-			double SIN_T = sin(theata);
+			FLOAT COS_T = cos(theata);
+			FLOAT SIN_T = sin(theata);
 			int XAA1,XAA2,YAA1,YAA2;
 			int xmflag = 1;
 			if(X_MOVE<0) xmflag =-1;
@@ -282,8 +284,8 @@ int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,double ratio)
 			if(CUR->type[ii]==0)	//side-object
 			{
 				LAS_X+=WID*xmflag;
-				NEXT_X+=(double)(WID*xmflag);
-				PLAS = cvPoint((int)((double)LAS_X/ratio),(int)((double)LAS_Y/ratio)+UpY);
+				NEXT_X+=(FLOAT)(WID*xmflag);
+				PLAS = cvPoint((int)((FLOAT)LAS_X/ratio),(int)((FLOAT)LAS_Y/ratio)+UpY);
 				PNEX = cvPoint((int)(NEXT_X/ratio),(int)(NEXT_Y/ratio)+UpY);
 			}
 			//translate coodinate for array
@@ -294,14 +296,14 @@ int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,double ratio)
 			//draw line and array 
 			cvLine(Image,PLAS,PNEX,COL,5);
 			//CvPoint PP = cvPoint(XAA1,YAA1);
-			CvPoint PP = cvPoint((int)((double)XAA1/ratio),(int)((double)YAA1/ratio+UpY));
+			CvPoint PP = cvPoint((int)((FLOAT)XAA1/ratio),(int)((FLOAT)YAA1/ratio+UpY));
 			cvLine(Image,PNEX,PP,COL,5);
-			PP = cvPoint((int)((double)XAA2/ratio),(int)((double)YAA2/ratio+UpY));
+			PP = cvPoint((int)((FLOAT)XAA2/ratio),(int)((FLOAT)YAA2/ratio+UpY));
 			cvLine(Image,PNEX,PP,COL,5);
 		}
 		else if(abs(Y_MOVE)>0)
 		{
-			double ARL2;
+			FLOAT ARL2;
 			if(M_LENGTH>10) ARL2=10.0;
 			else if(M_LENGTH>5) ARL2=5.0;
 			else ARL2 = 2.0;
@@ -321,7 +323,7 @@ int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,double ratio)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //show velocity-vector on 2D MAP
-void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC,double ratio)
+void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC,FLOAT ratio)
 {	
 	//Image information
 	const int height = IM->height;
@@ -329,16 +331,16 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 	const int UpY = height/10;
 	const int NEW_Y = height-UpY-height/10;
 
-	double TAN_ANG = tan(VA/2/180*m_PI);
+	FLOAT TAN_ANG = tan(VA/2/180*m_PI);
 
 	//2D MAP information
-	double X_RANGE = 2.0;
-	double Y_RANGE = 4.0;
+	FLOAT X_RANGE = 2.0;
+	FLOAT Y_RANGE = 4.0;
 	int Y_OFFS = 20;
 	int Y_OF_IM = MAP->height-Y_OFFS;	
 	int X_HAL = MAP->width/2;
-	double Xratio=(double)X_HAL/X_RANGE;	
-	double Yratio=(double)(Y_OF_IM)/Y_RANGE;
+	FLOAT Xratio=(FLOAT)X_HAL/X_RANGE;	
+	FLOAT Yratio=(FLOAT)(Y_OF_IM)/Y_RANGE;
 	CvScalar COL = cvScalar(0.0,0.0,255.0);
 	CvScalar COL2 = cvScalar(0.0,255.0,255.0);
 
@@ -346,22 +348,22 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 	{
 		if(P_I->se_num[kk]<1) continue;
 		//draw average point
-		double X = P_I->ave_p[kk][1];
-		double Y = P_I->ave_p[kk][0];
+		FLOAT X = P_I->ave_p[kk][1];
+		FLOAT Y = P_I->ave_p[kk][0];
 		int Ximg = X_HAL  -(int)(Xratio*X);	
 		int Yimg = Y_OF_IM-(int)(Yratio*Y);
-		double D_RANGE = Y*TAN_ANG*2;
-		double Pi_AX=(double)I_VEC[4*kk];
-		double Pi_AY=(double)I_VEC[4*kk+1];
-		double Pi_BX=(double)I_VEC[4*kk+2];
-		double Pi_BY=(double)I_VEC[4*kk+3];
+		FLOAT D_RANGE = Y*TAN_ANG*2;
+		FLOAT Pi_AX=(FLOAT)I_VEC[4*kk];
+		FLOAT Pi_AY=(FLOAT)I_VEC[4*kk+1];
+		FLOAT Pi_BX=(FLOAT)I_VEC[4*kk+2];
+		FLOAT Pi_BY=(FLOAT)I_VEC[4*kk+3];
 		//printf("[%f %f %f %f]\n",Pi_AX,Pi_AX,Pi_AX,Pi_BY);
 
-		double A_RATIO = (Pi_BX-Pi_AX)/(double)width;
+		FLOAT A_RATIO = (Pi_BX-Pi_AX)/(FLOAT)width;
 
-		double XD = A_RATIO*D_RANGE;
+		FLOAT XD = A_RATIO*D_RANGE;
 		printf("A_RATIO %f D_RANGE %f XD %f\n",A_RATIO,D_RANGE,XD);
-		double YD = P_I->ave_p[kk][2]-Y;
+		FLOAT YD = P_I->ave_p[kk][2]-Y;
 
 		CvPoint PC=cvPoint(Ximg,Yimg);
 		cvCircle(MAP,PC,5,COL,-1);		//draw average vehicle point
@@ -375,15 +377,15 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 
 		int X_MOVE = XimgA-Ximg;
 		int Y_MOVE = YimgA-Yimg;
-		int M_LENGTH = (int)(sqrt((double)(X_MOVE*X_MOVE+Y_MOVE*Y_MOVE)));
+		int M_LENGTH = (int)(sqrt((FLOAT)(X_MOVE*X_MOVE+Y_MOVE*Y_MOVE)));
 
 		if(abs(X_MOVE)>0)
 		{
 			int XA1;
-			double ARL=5.0;
-			double theata = -atan((double)Y_MOVE/(double)X_MOVE);
-			double COS_T = cos(theata);
-			double SIN_T = sin(theata);		
+			FLOAT ARL=5.0;
+			FLOAT theata = -atan((FLOAT)Y_MOVE/(FLOAT)X_MOVE);
+			FLOAT COS_T = cos(theata);
+			FLOAT SIN_T = sin(theata);		
 			int xmflag = 1;
 			if(X_MOVE<0) xmflag =-1;
 			if(M_LENGTH>10)	{XA1 =M_LENGTH-10; ARL=10.0;}
@@ -407,7 +409,7 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 		}
 		else if(abs(Y_MOVE)>0)
 		{
-			double ARL2;
+			FLOAT ARL2;
 			if(M_LENGTH>10) ARL2=10.0;
 			else if(M_LENGTH>5) ARL2=5.0;
 			else ARL2 = 2.0;
@@ -428,7 +430,7 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //show velocity-vector on image
-void show_vector(IplImage *Image,IplImage *TMAP,RESULT *CUR,PINFO *P_I,double ratio)
+void show_vector(IplImage *Image,IplImage *TMAP,RESULT *CUR,PINFO *P_I,FLOAT ratio)
 {	
 	if(CUR->num>0)
 	{
@@ -446,10 +448,10 @@ void show_likelihood(IplImage *Image,CvMat *LIKE,int *COORD)
 	IplImage *OIM = cvCreateImage(cvSize(Image->width,Image->height),Image->depth,1);
 
 	int X = COORD[0]; int Y = COORD[1];
-	double min_val=0,max_val=0;
+	FLOAT min_val=0,max_val=0;
 
-	cvMinMaxLoc(LIKE,&min_val,&max_val);
-	double ratio = 255.0/(max_val);
+	cvMinMaxLoc(LIKE,(double*)&min_val, (double*)&max_val);
+	FLOAT ratio = 255.0/(max_val);
 
 	for(int ii=0;ii<LIKE->width;ii++)
 	{
@@ -466,13 +468,13 @@ void show_likelihood(IplImage *Image,CvMat *LIKE,int *COORD)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //show detector accumulated score (debug)
-void show_det_score(IplImage *Image,double *ac_score,RESULT *CUR)
+void show_det_score(IplImage *Image,FLOAT *ac_score,RESULT *CUR)
 {
 	IplImage *D_score = cvCreateImage(cvSize(Image->width,Image->height),Image->depth,3);
 	int Step = D_score->widthStep;
 	int chs = D_score->nChannels;
 	int LL = Image->width*Image->height;
-	double *TP = ac_score;
+	FLOAT *TP = ac_score;
 
 	if(CUR->num>0)
 	{
@@ -562,7 +564,7 @@ IplImage *load_suc_image(int fnum)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //over-write detection result
-void ovw_det_result(IplImage *OR,IplImage *DE, double ratio)
+void ovw_det_result(IplImage *OR,IplImage *DE, FLOAT ratio)
 {
 	//parameters 
 	const int height = OR->height;
@@ -573,10 +575,10 @@ void ovw_det_result(IplImage *OR,IplImage *DE, double ratio)
 
 	for(int ii=UpY;ii<NEW_Y+UpY-1;ii++)
 	{
-		int SY = (int)((double)(ii-UpY)*ratio);
+		int SY = (int)((FLOAT)(ii-UpY)*ratio);
 		for(int jj=0;jj<width;jj++)
 		{
-			int SX = (int)((double)jj*ratio);
+			int SX = (int)((FLOAT)jj*ratio);
 			for(int cc=0;cc<3;cc++)
 			{
 				unsigned char *col = (unsigned char *)(DE->imageData+SY*DE->widthStep+SX*3+cc);

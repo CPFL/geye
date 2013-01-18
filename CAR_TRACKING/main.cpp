@@ -40,6 +40,7 @@
 #include "Common.h"
 
 #include "for_use_GPU.h"
+#include "switch_float.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -62,7 +63,8 @@ char WIN_B[]="2D-mapping";			//movie name
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//CUdevice dev;
+FILE *resFP;
+
 int main(void)
 {
 
@@ -74,11 +76,13 @@ int main(void)
 	bool FLAG = true;			//file end flag
 		 
 	//parameters
-	double thresh = -0.5;												//threshold score of detection (default :0.0)
-	double overlap = 0.4;												//threshold overlap parameter (default :0.4)
-	double ratio = 1;													//resize ratio
+	FLOAT thresh = -0.5;												//threshold score of detection (default :0.0)
+	FLOAT overlap = 0.4;												//threshold overlap parameter (default :0.4)
+	FLOAT ratio = 1;													//resize ratio
 	int TH_length = 80;													//tracking length threshold
 
+    /* Output file for detect result */
+    resFP = fopen("detect_result.dat", "w");
 
 #define TIME_MEASURE
 #ifdef TIME_MEASURE
@@ -155,11 +159,11 @@ int main(void)
 		//for(int k=0;k<24;k++){printf("âÊëf%d\n",(int)(unsigned char)IM_D -> imageData[k]);}
 
 		///**HOG(é©çÏ)*/
-		//double **h;
+		//FLOAT **h;
 		/////**h = new int[1000];*/
-		//h = (double**)malloc(2*sizeof(double*));
-		//h[0] =(double*) malloc(64*sizeof(double));
-		//h[1] =(double*) malloc(64*sizeof(double));
+		//h = (FLOAT**)malloc(2*sizeof(FLOAT*));
+		//h[0] =(FLOAT*) malloc(64*sizeof(FLOAT));
+		//h[1] =(FLOAT*) malloc(64*sizeof(FLOAT));
 		//int a=0;
 		//for(int i=0;i<64;i+=0)
 		//{
@@ -173,8 +177,8 @@ int main(void)
 		//		a++;
 		//}
 		//
-		//double Dx,Dy,G, m[20];
-		//long double l;
+		//FLOAT Dx,Dy,G, m[20];
+		//long FLOAT l;
 		//int z,z2;
 		//for(z2=0;z2<20;z2++){m[z2]=0;}
 		//for(int c=9;c<49;c+=8)
@@ -185,7 +189,7 @@ int main(void)
 		//	Dy = *(h[0]+c+d+8)-*(h[0]+c+d-8);
 		//	//printf("Dx%f\n",Dx);
 		//	G= sqrt(pow(Dx,2.0)+pow(Dy,2.0));
-		//	l = atan2((long double)Dy,(long double)Dx)/3.141592*180.0;
+		//	l = atan2((long FLOAT)Dy,(long FLOAT)Dx)/3.141592*180.0;
 		//	//printf("äpìx%f\n",l);
 		//	if(l>0)
 		//	{
@@ -225,7 +229,7 @@ int main(void)
 
 		//IplImage *R_I = ipl_resize(IM_D,ratio);								//trime image for detection
 		IplImage *R_I = IM_D;
-		double *A_SCORE = ini_ac_score(R_I);								//alloc accumulated score
+		FLOAT *A_SCORE = ini_ac_score(R_I);								//alloc accumulated score
 		RESULT *CUR=car_detection(R_I,MO,thresh,&D_NUMS,A_SCORE,overlap);	//detect car-boundary boxes
 		//finalization(CUR,LR,&P_I,A_SCORE,R_I,TH_length);					//calculate tracking information		
 
@@ -263,11 +267,13 @@ int main(void)
 		//SaveIm = combine_image (2, cimg);
 		//cvSaveImage(pass,SaveIm);
 
+#if 0
         printf("\n****** To finish program, type \"Esc\" key *****\n");
         int IN_KEY=cvWaitKey(0);
         //        if(IN_KEY==0x1b) break;
         if(IN_KEY==1048603) // if 'Esc' key is typed
           break;  
+#endif
         
 		//release data
 		//Release_sdata(Sdata);						//release scan point data
@@ -305,6 +311,9 @@ int main(void)
     time_mearure = (double)cv::getTickCount() - time_mearure;
     printf("execution time : %fms\n", time_mearure*1000./cv::getTickFrequency());
 #endif
+
+    fprintf(resFP, "execution time : %fms\n", time_mearure*1000./cv::getTickFrequency());
+    fclose(resFP);
 
 	return 0;
 }

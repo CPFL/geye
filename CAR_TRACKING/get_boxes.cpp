@@ -17,6 +17,7 @@
 #include "Common.h"
 
 #include "for_use_GPU.h"
+#include "switch_float.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -29,26 +30,26 @@
 
 //subfunctions for detection
 
-double *padarray(double *feature,int *size,int padx,int pady);		//padd zeros to image 
-double *flip_feat(double *feat,int *size);							//filip feature order (to reduce calculation time)
-int *get_gmpc(double *score,double thresh,int *ssize,int *GMN);		//get good matches
+FLOAT *padarray(FLOAT *feature,int *size,int padx,int pady);		//padd zeros to image 
+FLOAT *flip_feat(FLOAT *feat,int *size);							//filip feature order (to reduce calculation time)
+int *get_gmpc(FLOAT *score,FLOAT thresh,int *ssize,int *GMN);		//get good matches
 
 //calculate root rectangle-cooridnate 
-double *rootbox(int x,int y,double scale,int padx,int pady,int *rsize);	
+FLOAT *rootbox(int x,int y,FLOAT scale,int padx,int pady,int *rsize);	
 
 //calculate @art rectangle-cooridnate 
-double *partbox(int x,int y,int ax,int ay,double scale,int padx,int pady,int *psize,int *lx,int *ly,int *ssize);
+FLOAT *partbox(int x,int y,int ax,int ay,FLOAT scale,int padx,int pady,int *psize,int *lx,int *ly,int *ssize);
 
 //calculate accumulated HOG detector score
-void calc_a_score(double *ac_score,double *score,int *ssize,int *rsize,Model_info *MI,double scale);
+void calc_a_score(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_info *MI,FLOAT scale);
 
 //Object-detection function (extended to main)
-double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnum,double *A_SCORE,double thresh);
+FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,FLOAT *A_SCORE,FLOAT thresh);
 
 //release-functions
-void free_rootmatch(double **rootmatch, MODEL *MO);
-void free_partmatch(double **partmatch, MODEL *MO);
-void free_boxes(double **boxes,int LofFeat);
+void free_rootmatch(FLOAT **rootmatch, MODEL *MO);
+void free_partmatch(FLOAT **partmatch, MODEL *MO);
+void free_boxes(FLOAT **boxes,int LofFeat);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -61,28 +62,28 @@ void free_boxes(double **boxes,int LofFeat);
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //sub functions
 //padd zeros to image 
-double *padarray(double *feature,int *size,int padx,int pady)
+FLOAT *padarray(FLOAT *feature,int *size,int padx,int pady)
 {
   const int NEW_Y=size[0]+pady*2;
   const int NEW_X=size[1]+padx*2;
   const int L=NEW_Y*padx;
   const int SPL=size[0]+pady;
-  const int M_S = sizeof(double)*size[0];
+  const int M_S = sizeof(FLOAT)*size[0];
   
   CUresult res;
-  double *new_feature;
+  FLOAT *new_feature;
   
-  res = cuMemHostAlloc((void **)&new_feature, NEW_Y*NEW_X * size[2] * sizeof(double), CU_MEMHOSTALLOC_DEVICEMAP); // feature (pad-added)
+  res = cuMemHostAlloc((void **)&new_feature, NEW_Y*NEW_X * size[2] * sizeof(FLOAT), CU_MEMHOSTALLOC_DEVICEMAP); // feature (pad-added)
   if(res != CUDA_SUCCESS) {
     printf("cuMemHostAlloc(new_feature) failed: res = %s\n", conv(res));
     exit(1);
   }
   
-  memset(new_feature, 0, NEW_Y*NEW_X * size[2] * sizeof(double));  // zero clear
+  memset(new_feature, 0, NEW_Y*NEW_X * size[2] * sizeof(FLOAT));  // zero clear
   
 
-  double *P=new_feature;
-  double *S=feature;
+  FLOAT *P=new_feature;
+  FLOAT *S=feature;
   for(int ii=0;ii<size[2];ii++)	//31
     {
       P+=L; //row-all
@@ -107,10 +108,10 @@ double *padarray(double *feature,int *size,int padx,int pady)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //flip feat 
-double *flip_feat(double *feat,int *size)
+FLOAT *flip_feat(FLOAT *feat,int *size)
 {
 	const int ORD[31]={10,9,8,7,6,5,4,3,2,1,18,17,16,15,14,13,12,11,19,27,26,25,24,23,22,21,20,30,31,28,29};
-	const int S_S =sizeof(double)*size[0];
+	const int S_S =sizeof(FLOAT)*size[0];
 
 #ifndef ORIGINAL
     CUresult res;
@@ -124,28 +125,28 @@ double *flip_feat(double *feat,int *size)
 #endif
 
 #ifdef ORIGINAL
-	double *fliped = (double*)calloc(size[0]*size[1]*size[2],sizeof(double)); // feature (pad-added)
+	FLOAT *fliped = (FLOAT*)calloc(size[0]*size[1]*size[2],sizeof(FLOAT)); // feature (pad-added)
 #else
-    double *fliped;
-    res = cuMemHostAlloc((void **)&fliped, size[0]*size[1]*size[2]*sizeof(double), CU_MEMHOSTALLOC_DEVICEMAP);
+    FLOAT *fliped;
+    res = cuMemHostAlloc((void **)&fliped, size[0]*size[1]*size[2]*sizeof(FLOAT), CU_MEMHOSTALLOC_DEVICEMAP);
     if(res != CUDA_SUCCESS){
       printf("cuMemHostAlloc(fliped) failed: res = %s\n", conv(res));
       exit(1);
     }
 
-    memset(fliped, 0, size[0]*size[1]*size[2]*sizeof(double));
+    memset(fliped, 0, size[0]*size[1]*size[2]*sizeof(FLOAT));
 
 #endif
 
-	double *D=fliped;
+	FLOAT *D=fliped;
 	int DIM = size[0]*size[1];
 	for(int ii=0;ii<size[2];ii++)
 	{
-		double *S=feat+DIM*(*(ORD+ii));
+		FLOAT *S=feat+DIM*(*(ORD+ii));
 
 		for(int jj=1;jj<=size[1];jj++)
 		{
-			double *P=S-*(size)*jj; //*(size)=size[0]
+			FLOAT *P=S-*(size)*jj; //*(size)=size[0]
 			//memcpy_s(D,S_S,P,S_S);
             memcpy(D, P,S_S);
 			D+=*size;
@@ -171,12 +172,12 @@ double *flip_feat(double *feat,int *size)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //get good-matched pixel-coordinate 
-int *get_gmpc(double *score,double thresh,int *ssize,int *GMN)
+int *get_gmpc(FLOAT *score,FLOAT thresh,int *ssize,int *GMN)
 {
   const int L = ssize[0]*ssize[1];
-  double *P=score;
+  FLOAT *P=score;
   int NUM=0;
-  double MAX_SCORE=thresh;
+  FLOAT MAX_SCORE=thresh;
   
   for(int ii=0;ii<L;ii++)
     {
@@ -213,13 +214,13 @@ int *get_gmpc(double *score,double thresh,int *ssize,int *GMN)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //get root-box pixel coordinate 
-double *rootbox(int x,int y,double scale,int padx,int pady,int *rsize)
+FLOAT *rootbox(int x,int y,FLOAT scale,int padx,int pady,int *rsize)
 {
-	double *Out=(double*)malloc(sizeof(double)*4);
-	Out[0]=((double)y-(double)pady+1)*scale;	//Y1
-	Out[1]=((double)x-(double)padx+1)*scale;	//X1
-	Out[2]=Out[0]+(double)rsize[0]*scale-1.0;	//Y2
-	Out[3]=Out[1]+(double)rsize[1]*scale-1.0;	//X2
+	FLOAT *Out=(FLOAT*)malloc(sizeof(FLOAT)*4);
+	Out[0]=((FLOAT)y-(FLOAT)pady+1)*scale;	//Y1
+	Out[1]=((FLOAT)x-(FLOAT)padx+1)*scale;	//X1
+	Out[2]=Out[0]+(FLOAT)rsize[0]*scale-1.0;	//Y2
+	Out[3]=Out[1]+(FLOAT)rsize[1]*scale-1.0;	//X2
 	return(Out);
 }
 
@@ -229,20 +230,20 @@ double *rootbox(int x,int y,double scale,int padx,int pady,int *rsize)
 
 //get part-box pixel coordinate 
 //partbox(PA,x,y,ax[pp],ay[pp],scale,padx,pady,Pd_size,Ix[pp],Iy[pp],Isize);
-double *partbox(int x,int y,int ax,int ay,double scale,int padx,int pady,int *psize,int *lx,int *ly,int *ssize)
+FLOAT *partbox(int x,int y,int ax,int ay,FLOAT scale,int padx,int pady,int *psize,int *lx,int *ly,int *ssize)
 {
-	double *Out=(double*)malloc(sizeof(double)*4);
+	FLOAT *Out=(FLOAT*)malloc(sizeof(FLOAT)*4);
 	int probex = (x-1)*2+ax;
 	int probey = (y-1)*2+ay;
 	int P = probey+probex*ssize[0];
 
-	double px = (double)lx[P]+1.0;
-	double py = (double)ly[P]+1.0;
+	FLOAT px = (FLOAT)lx[P]+1.0;
+	FLOAT py = (FLOAT)ly[P]+1.0;
 
-	Out[0]=((py-2.0)/2.0+1.0-(double)pady)*scale;	//Y1
-	Out[1]=((px-2.0)/2.0+1.0-(double)padx)*scale;	//X1
-	Out[2]=Out[0]+(double)psize[0]*scale/2.0-1.0;		//Y2
-	Out[3]=Out[1]+(double)psize[1]*scale/2.0-1.0;		//X2
+	Out[0]=((py-2.0)/2.0+1.0-(FLOAT)pady)*scale;	//Y1
+	Out[1]=((px-2.0)/2.0+1.0-(FLOAT)padx)*scale;	//X1
+	Out[2]=Out[0]+(FLOAT)psize[0]*scale/2.0-1.0;		//Y2
+	Out[3]=Out[1]+(FLOAT)psize[1]*scale/2.0-1.0;		//X2
 	return(Out);
 }
 
@@ -251,35 +252,35 @@ double *partbox(int x,int y,int ax,int ay,double scale,int padx,int pady,int *ps
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //calculate accumulated HOG detector score
-void calc_a_score(double *ac_score,double *score,int *ssize,int *rsize,Model_info *MI,double scale)
+void calc_a_score(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_info *MI,FLOAT scale)
 {
 	const int L_AS = MI->IM_HEIGHT*MI->IM_WIDTH;
 	const int IHEI = MI->IM_HEIGHT;
 	const int IWID = MI->IM_WIDTH;
-	double sbin = (double)(MI->sbin);
+	FLOAT sbin = (FLOAT)(MI->sbin);
 	int pady_n = MI->pady;
 	int padx_n = MI->padx;
 	int block_pad = (int)(scale/2.0);
 
-	int RY = (int)((double)rsize[0]*scale/2.0-1.0+block_pad);
-	int RX = (int)((double)rsize[1]*scale/2.0-1.0+block_pad);
+	int RY = (int)((FLOAT)rsize[0]*scale/2.0-1.0+block_pad);
+	int RX = (int)((FLOAT)rsize[1]*scale/2.0-1.0+block_pad);
 
 	for(int ii=0;ii<IWID;ii++)
 	{
-		int Xn=(int)((double)ii/scale+padx_n);
+		int Xn=(int)((FLOAT)ii/scale+padx_n);
 
 		for(int jj=0;jj<IHEI;jj++)
 		{
-			int Yn =(int)((double)jj/scale+pady_n);
+			int Yn =(int)((FLOAT)jj/scale+pady_n);
 			if(Yn<ssize[0] && Xn<ssize[1])
 			{
-				double sc = score[Yn+Xn*ssize[0]];		//get score of pixel
+				FLOAT sc = score[Yn+Xn*ssize[0]];		//get score of pixel
 
 				int Im_Y = jj+RY;
 				int Im_X = ii+RX;
 				if(Im_Y<IHEI && Im_X<IWID)
 				{
-					double *PP=ac_score+Im_Y+Im_X*IHEI;		//consider root rectangle size
+					FLOAT *PP=ac_score+Im_Y+Im_X*IHEI;		//consider root rectangle size
 					if(sc>*PP) *PP=sc;						//save max score
 				}
 			}
@@ -298,7 +299,7 @@ void calc_a_score(double *ac_score,double *score,int *ssize,int *rsize,Model_inf
 
 
 //detect boundary box 
-double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnum,double *A_SCORE,double thresh)
+FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,FLOAT *A_SCORE,FLOAT thresh)
 {
   
   //constant parameters
@@ -318,8 +319,8 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
   int *rootsym = MO->RF->rootsym;	
   int *part_sym = MO->PF->part_sym;	
   int **part_size = MO->PF->part_size;
-  double **rootfilter = MO->RF->rootfilter;
-  double **partfilter=MO->PF->partfilter;
+  FLOAT **rootfilter = MO->RF->rootfilter;
+  FLOAT **partfilter=MO->PF->partfilter;
   int **psize = MO->MI->psize;
   
   //int *rm_size = (int*)malloc(sizeof(int)*NoC*2);				//size of root-matching-score-matrix 	
@@ -327,19 +328,19 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
   int **rm_size_array = (int **)malloc(sizeof(int *)*L_MAX);
   int **pm_size_array = (int **)malloc(sizeof(int *)*L_MAX);
 
-  double **Tboxes=(double**)calloc(LofFeat,sizeof(double*));		//box coordinate information(Temp)
+  FLOAT **Tboxes=(FLOAT**)calloc(LofFeat,sizeof(FLOAT*));		//box coordinate information(Temp)
   int  *b_nums =(int*)calloc(LofFeat,sizeof(int));				//length of Tboxes 
   int count = 0;													
   int D_NUMS=0;													//number of detected boundary box
   CUresult res;
   
   /* matched score (root and part) */
-  double ***rootmatch,***partmatch;  
+  FLOAT ***rootmatch,***partmatch;  
 
   int *new_PADsize;  // need new_PADsize[L_MAX*3]
   size_t SUM_SIZE_feat = 0;
 
-  double **featp2 = (double **)malloc(L_MAX*sizeof(double *));
+  FLOAT **featp2 = (FLOAT **)malloc(L_MAX*sizeof(FLOAT *));
   if(featp2 == NULL) {  // error semantics
     printf("allocate featp2 failed\n");
     exit(1);
@@ -363,12 +364,12 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
     int PADsize[3] = { FSIZE[tmpL*2], FSIZE[tmpL*2+1], 31 };
     int NEW_Y = PADsize[0] + pady*2;
     int NEW_X = PADsize[1] + padx*2;
-    SUM_SIZE_feat += (NEW_X*NEW_Y*PADsize[2])*sizeof(double);
+    SUM_SIZE_feat += (NEW_X*NEW_Y*PADsize[2])*sizeof(FLOAT);
 
   }
 
   /* allocate region for padded feat in a lump */
-  double *dst_feat;
+  FLOAT *dst_feat;
   res = cuMemHostAlloc((void **)&dst_feat, SUM_SIZE_feat, CU_MEMHOSTALLOC_DEVICEMAP);
   if(res != CUDA_SUCCESS) {
     printf("cuMemHostAlloc(dst_feat) failed: res = %s\n", conv(res));
@@ -381,11 +382,11 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
   unsigned long long int pointer_feat = (unsigned long long int)dst_feat;
   for(int tmpL=0; tmpL<L_MAX; tmpL++) {
 
-    featp2[tmpL] = (double *)pointer_feat;
+    featp2[tmpL] = (FLOAT *)pointer_feat;
     int PADsize[3] = { FSIZE[tmpL*2], FSIZE[tmpL*2+1], 31 };
     int NEW_Y = PADsize[0] + pady*2;
     int NEW_X = PADsize[1] + padx*2;
-    pointer_feat += (unsigned long long int)(NEW_X*NEW_Y*PADsize[2]*sizeof(double));
+    pointer_feat += (unsigned long long int)(NEW_X*NEW_Y*PADsize[2]*sizeof(FLOAT));
 
   }
 
@@ -397,9 +398,9 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
     int NEW_X = PADsize[1] + padx*2;
     int L = NEW_Y*padx;
     int SPL = PADsize[0] + pady;
-    int M_S = sizeof(double)*PADsize[0];
-    double *P = featp2[tmpL];
-    double *S = features[tmpL];
+    int M_S = sizeof(FLOAT)*PADsize[0];
+    FLOAT *P = featp2[tmpL];
+    FLOAT *S = features[tmpL];
 
     for(int ii=0; ii<PADsize[2]; ii++) 
       {
@@ -464,7 +465,7 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
       /* parameters (related for level) */
       int L=level-interval;
       /* matched score size matrix */
-      double scale=(double)sbin/scales[level];
+      FLOAT scale=(FLOAT)sbin/scales[level];
       
       /**************************************************************************/      
       /* loop conditon */
@@ -544,18 +545,18 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
       /* parameters (related for level) */
       int L=level-interval;
       /* matched score size matrix */
-      double scale=(double)sbin/scales[level];
-
+      FLOAT scale=(FLOAT)sbin/scales[level];
+      
       /**************************************************************************/      
       /* loop conditon */
-
+      
       if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
         {
           Tboxes[count]=NULL;
           count++;
           continue;
         }
-    
+      
       /* loop conditon */
       /**************************************************************************/
       
@@ -567,16 +568,16 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
           int RL = rm_size_array[level][jj*2]*rm_size_array[level][jj*2+1];  //length of root-matching 
           int RI = MO->MI->ridx[jj];  //root-index
           int OI = MO->MI->oidx[jj];  //offset-index
-          int RL_S =sizeof(double)*RL;
+          int RL_S =sizeof(FLOAT)*RL;
           
-          double OFF = MO->MI->offw[RI];  //offset information
-          double *SCORE = (double*)malloc(RL_S);  //Matching score matrix
+          FLOAT OFF = MO->MI->offw[RI];  //offset information
+          FLOAT *SCORE = (FLOAT*)malloc(RL_S);  //Matching score matrix
           
           /* add offset */
           //memcpy_s(SCORE,RL_S,rootmatch[jj],RL_S);
           memcpy(SCORE, rootmatch[level][jj], RL_S);
-          double *SC_S = SCORE;
-          double *SC_E = SCORE+RL;
+          FLOAT *SC_S = SCORE;
+          FLOAT *SC_E = SCORE+RL;
           while(SC_S<SC_E) *(SC_S++)+=OFF;
           
           /* root matching size */
@@ -608,12 +609,12 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
                   ay[kk] = MO->MI->anchor[DIDX*2+1]+1;
                   
                   /* set part-match */
-                  double *match = partmatch[L][PIDX];
+                  FLOAT *match = partmatch[L][PIDX];
                   
                   /* size of part-matching */
                   int PSSIZE[2] ={pm_size_array[L][PIDX*2], pm_size_array[L][PIDX*2+1]};
                   
-                  double *Q = match;
+                  FLOAT *Q = match;
                   for(int ss=0;ss<PSSIZE[0]*PSSIZE[1];ss++) *(Q++)*=-1;
                   
                   /* index matrix */
@@ -621,11 +622,11 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
                   Iy[kk] =(int*)malloc(sizeof(int)*PSSIZE[0]*PSSIZE[1]);
                   
                   /* decide position of part for all pixels */
-                  double *M = dt(match, MO->MI->def[DID_4], MO->MI->def[DID_4+1], MO->MI->def[DID_4+2], MO->MI->def[DID_4+3], PSSIZE, Ix[kk], Iy[kk]);
+                  FLOAT *M = dt(match, MO->MI->def[DID_4], MO->MI->def[DID_4+1], MO->MI->def[DID_4+2], MO->MI->def[DID_4+3], PSSIZE, Ix[kk], Iy[kk]);
                   
                   /* add part score */
                   add_part_calculation(SCORE, M, R_S, PSSIZE, ax[kk], ay[kk]); 
-
+                  
                   s_free(M);
                 }
             }
@@ -641,18 +642,17 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
           calc_a_score(A_SCORE, SCORE, R_S, RSIZE, MO->MI, scale);
           
           /* detected box coordinate(current level) */
-          double *t_boxes = (double*)calloc(GMN*GL,sizeof(double));
+          FLOAT *t_boxes = (FLOAT*)calloc(GMN*GL,sizeof(FLOAT));
           
           for(int kk=0;kk<GMN;kk++)
             {
-              double *P_temp = t_boxes+GL*kk;
+              FLOAT *P_temp = t_boxes+GL*kk;
               int y = GMPC[2*kk];
               int x = GMPC[2*kk+1];
               
               /* calculate root box coordinate */
-              double *RB =rootbox(x,y,scale,padx,pady,RSIZE);
-              //memcpy_s(P_temp,sizeof(double)*4,RB,sizeof(double)*4);
-              memcpy(P_temp, RB,sizeof(double)*4);
+              FLOAT *RB =rootbox(x,y,scale,padx,pady,RSIZE);
+              memcpy(P_temp, RB,sizeof(FLOAT)*4);
               s_free(RB);
               P_temp+=4;
               
@@ -662,14 +662,13 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
                   int Isize[2]={pm_size_array[L][MO->MI->pidx[jj][pp]*2], pm_size_array[L][MO->MI->pidx[jj][pp]*2+1]};
                   
                   /* calculate part box coordinate */
-                  double *PB = partbox(x,y,ax[pp],ay[pp],scale,padx,pady,PBSIZE,Ix[pp],Iy[pp],Isize);
-                  //memcpy_s(P_temp,sizeof(double)*4,PB,sizeof(double)*4);
-                  memcpy(P_temp, PB,sizeof(double)*4);
+                  FLOAT *PB = partbox(x,y,ax[pp],ay[pp],scale,padx,pady,PBSIZE,Ix[pp],Iy[pp],Isize);
+                  memcpy(P_temp, PB,sizeof(FLOAT)*4);
                   P_temp+=4;
                   s_free(PB);
                 }
               /* component number and score */
-              *(P_temp++)=(double)jj;					//component number 
+              *(P_temp++)=(FLOAT)jj;					//component number 
               *(P_temp++)=SCORE[x*R_S[0]+y];			//score of good match
               *P_temp = scale;
             }
@@ -746,29 +745,29 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
 
   /* Output boundary-box coorinate information */
   int GL=(numpart[0]+1)*4+3;
-  double *boxes=(double*)calloc(D_NUMS*GL,sizeof(double));		//box coordinate information(Temp)
-  double *T1=boxes;
+  FLOAT *boxes=(FLOAT*)calloc(D_NUMS*GL,sizeof(FLOAT));		//box coordinate information(Temp)
+  FLOAT *T1=boxes;
   int cc=0;
   
   
   for(int ii=0;ii<LofFeat;ii++)
 	{
       int num_t = b_nums[ii]*GL;
-      double *T2 = Tboxes[ii];
+      FLOAT *T2 = Tboxes[ii];
       if(num_t>0)
 		{
-          //memcpy_s(T1,sizeof(double)*num_t,T2,sizeof(double)*num_t);
-          memcpy(T1, T2,sizeof(double)*num_t);
+          //memcpy_s(T1,sizeof(FLOAT)*num_t,T2,sizeof(FLOAT)*num_t);
+          memcpy(T1, T2,sizeof(FLOAT)*num_t);
           T1+=num_t;
 		}
 	}
   
   
-  double AS_OFF = abs(thresh);
+  FLOAT AS_OFF = abs(thresh);
   
   /////////////////////////////////
   /* accumulated score calculation */
-  double max_ac = 0.0;
+  FLOAT max_ac = 0.0;
   
   
   /* add offset to accumulated score */
@@ -784,7 +783,7 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
   /* normalization */
   if(max_ac>0.0)
 	{
-      double ac_ratio = 1.0/max_ac;
+      FLOAT ac_ratio = 1.0/max_ac;
       for(int ii=0;ii<MO->MI->IM_HEIGHT*MO->MI->IM_WIDTH;ii++){A_SCORE[ii]*=ac_ratio;}
 	}
   
@@ -810,7 +809,7 @@ double *get_boxes(double **features,double *scales,int *FSIZE,MODEL *MO,int *Dnu
 
 //free root-matching result 
 
-void free_rootmatch(double **rootmatch, MODEL *MO)
+void free_rootmatch(FLOAT **rootmatch, MODEL *MO)
 {
   CUresult res;
 
@@ -841,7 +840,7 @@ void free_rootmatch(double **rootmatch, MODEL *MO)
 
 //free part-matching result 
 
-void free_partmatch(double **partmatch, MODEL *MO)
+void free_partmatch(FLOAT **partmatch, MODEL *MO)
 {
   CUresult res;
 
@@ -870,7 +869,7 @@ void free_partmatch(double **partmatch, MODEL *MO)
 
 //free detected boxes result 
 
-void free_boxes(double **boxes, int LofFeat)
+void free_boxes(FLOAT **boxes, int LofFeat)
 {
 	if(boxes!=NULL)
 	{

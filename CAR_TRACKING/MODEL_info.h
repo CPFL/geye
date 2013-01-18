@@ -30,6 +30,8 @@
 #endif
 #include <stdio.h>	
 
+#include "switch_float.h"
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -83,7 +85,7 @@ typedef struct {
 	//per root
 	int *ridx;			//root index information
 	int *oidx;			//offsetindex information
-	double *offw;		//offset weight
+	FLOAT *offw;		//offset weight
 	int *rsize;			//root size
 	int *numpart;		//number of part filter per component
 
@@ -93,17 +95,17 @@ typedef struct {
 	int **psize;
 
 	//defs
-	double *def;	//defs
+	FLOAT *def;	//defs
 	int *anchor;	//anchor
 
 	//least_square info
-	double **x1;
-	double **y1;
-	double **x2;
-	double **y2;
+	FLOAT **x1;
+	FLOAT **y1;
+	FLOAT **x2;
+	FLOAT **y2;
 
 	bool ini;	//flag for initialization
-	double ratio;	//ratio of zooming image 
+	FLOAT ratio;	//ratio of zooming image 
 
 }Model_info;
 
@@ -111,7 +113,7 @@ typedef struct {
 typedef struct {
 	int NoR;				//number of root filter
 	int **root_size;		//size of root filter
-	double **rootfilter;	//weight of root filter
+	FLOAT **rootfilter;	//weight of root filter
 	int *rootsym;			//symmetric information
 }Rootfilters;
 
@@ -119,7 +121,7 @@ typedef struct {
 typedef struct {
 	int NoP;				//number of part filter
 	int **part_size;		//size of part filter
-	double **partfilter;	//weight of root filter
+	FLOAT **partfilter;	//weight of root filter
 	int *part_partner;		//symmetric-partner information
 	int *part_sym;			//symmetric information of part filter
 }Partfilters;
@@ -138,9 +140,9 @@ typedef struct {
 	CvConDensation ** condens;
 	int *se_num;
 	int **L_P;
-	double **L_VX;
-	double **L_VY;
-	double **ave_p;
+	FLOAT **L_VX;
+	FLOAT **L_VY;
+	FLOAT **ave_p;
 }PINFO;
 
 //Result of Detection
@@ -150,8 +152,8 @@ typedef struct {
 	int *OR_point;
 	IplImage **IM;
 	int *type;
-	double *scale;
-	double *score;
+	FLOAT *scale;
+	FLOAT *score;
 }RESULT;
 
 #endif
