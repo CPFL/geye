@@ -1,5 +1,6 @@
 #include<stdio.h>
 #include<stdlib.h>
+#include<stdbool.h>   /* to use "bool" in C-language.(bool is used in for_use_GPU.h) */
 #include"for_use_GPU.h"
 
 

@@ -5,14 +5,10 @@ CUDA_ARCH=sm_20
 CUDA_COMPILER = nvcc -arch=$(CUDA_ARCH) -cubin
 
 # Include paths...
-#Debug_Include_Path=-I"../../../../../../OpenCV2.0/include/opencv" 
 CUDA_INC=/usr/local/cuda/include
 OPENCV_INC=/usr/local/include/opencv
 LEGACY_INC=/usr/local/include/opencv2/legacy
-#Debug_Include_Path= -I"/usr/local/include/opencv" -I"/usr/src/linux-headers-3.2.0-33/arch/um/include/shared" -I"/usr/local/include/opencv2/legacy/" -I$(CUDA_INC)
 Debug_Include_Path= -I$(OPENCV_INC) -I"/usr/src/linux-headers-3.2.0-33/arch/um/include/shared" -I$(LEGACY_INC) -I$(CUDA_INC)
-#Release_Include_Path=-I"../../../../../../OpenCV2.0/include/opencv" 
-#Release_Include_Path= -I"/usr/local/include/opencv" -I"/usr/src/linux-headers-3.2.0-33/arch/um/include/shared" -I"/usr/local/include/opencv2/legacy/" -I$(CUDA_INC)
 Release_Include_Path= -I$(OPENCV_INC) -I"/usr/src/linux-headers-3.2.0-33/arch/um/include/shared" -I$(LEGACY_INC) -I$(CUDA_INC)	
 
 # Library paths...
@@ -21,10 +17,7 @@ Debug_Library_Path= -L/usr/local/lib -L$(CUDA_LIB)
 Release_Library_Path= -L/usr/local/lib -L$(CUDA_LIB)
 
 # Additional libraries...
-#Debug_Libraries=-Wl,--start-group -lcv -lcxcore -lcvaux -lhighgui  -Wl,--end-group
 Debug_Libraries=-Wl,--start-group   -Wl,--end-group -lopencv_calib3d -lopencv_contrib -lopencv_core -lopencv_features2d -lopencv_flann -lopencv_gpu -lopencv_highgui -lopencv_imgproc -lopencv_legacy -lopencv_ml -lopencv_nonfree -lopencv_objdetect -lopencv_photo -lopencv_stitching -lopencv_ts -lopencv_video -lopencv_videostab -lcuda -lm
-#Release_Libraries=-Wl,--start-group -lcv -lcxcore -lcvaux -lhighgui  -Wl,--end-group
-#Release_Libraries = =-Wl,--start-group   -Wl,--end-group -lopencv_calib3d -lopencv_contrib -lopencv_core -lopencv_features2d -lopencv_flann -lopencv_gpu -lopencv_highgui -lopencv_imgproc -lopencv_legacy -lopencv_ml -lopencv_nonfree -lopencv_objdetect -lopencv_photo -lopencv_stitching -lopencv_ts -lopencv_video -lopencv_videostab -lstdc++ -lcuda -lm
 Release_Libraries = -Wl,--start-group   -Wl,--end-group -lopencv_calib3d -lopencv_contrib -lopencv_core -lopencv_features2d -lopencv_flann -lopencv_gpu -lopencv_highgui -lopencv_imgproc -lopencv_legacy -lopencv_ml -lopencv_nonfree -lopencv_objdetect -lopencv_photo -lopencv_stitching -lopencv_ts -lopencv_video -lopencv_videostab -lstdc++ -lcuda -lm
 
 # Preprocessor definitions...
@@ -45,8 +38,8 @@ build_all_configurations: Debug Release
 
 # Builds the Debug configuration...
 .PHONY: Debug
-Debug: create_folders gccDebug/detect.o gccDebug/dt.o gccDebug/fconvsMT.o gccDebug/featurepyramid.o gccDebug/get_boxes.o gccDebug/laser_func.o gccDebug/load_model.o gccDebug/main.o gccDebug/nms.o gccDebug/resize.o gccDebug/showboxes.o gccDebug/tracking.o gccDebug/conv.o gccDebug/GPU_init.o gccDebug/GPU_function.cubin
-	gcc gccDebug/detect.o gccDebug/dt.o gccDebug/fconvsMT.o gccDebug/featurepyramid.o gccDebug/get_boxes.o gccDebug/laser_func.o gccDebug/load_model.o gccDebug/main.o gccDebug/nms.o gccDebug/resize.o gccDebug/showboxes.o gccDebug/tracking.o  gccDebug/conv.o gccDebug/GPU_init.o $(Debug_Library_Path) $(Debug_Libraries) -Wl,-rpath,./ -o ../gccDebug/CAR_TRACKING.exe
+Debug: create_folders gccDebug/detect.o gccDebug/dt.o gccDebug/fconvsMT.o gccDebug/featurepyramid.o gccDebug/get_boxes.o gccDebug/laser_func.o gccDebug/load_model.o gccDebug/main.o gccDebug/nms.o gccDebug/resize.o gccDebug/showboxes.o gccDebug/tracking.o gccDebug/conv.o gccDebug/GPU_init.o gccDebug/GPU_function.cubin gccDebug/dt_GPU.o 	
+	gcc gccDebug/detect.o gccDebug/dt.o gccDebug/fconvsMT.o gccDebug/featurepyramid.o gccDebug/get_boxes.o gccDebug/laser_func.o gccDebug/load_model.o gccDebug/main.o gccDebug/nms.o gccDebug/resize.o gccDebug/showboxes.o gccDebug/tracking.o  gccDebug/conv.o gccDebug/GPU_init.o gccDebug/dt_GPU.o  $(Debug_Library_Path) $(Debug_Libraries) -Wl,-rpath,./ -o ../gccDebug/CAR_TRACKING.exe
 
 # Compiles file detect.cpp for the Debug configuration...
 -include gccDebug/detect.d
@@ -139,14 +132,19 @@ gccDebug/GPU_init.o: GPU_init.cpp
 gccDebug/GPU_function.cubin: GPU_function.cu
 	$(CUDA_COMPILER) $(Debug_Compiler_Flags) -G  -o ../gccDebug/GPU_function.cubin GPU_function.cu -lcuda
 
+# Compiles file dt_GPU.cpp for the Debug configuration...
+-include gccDebug/dt_GPU.d
+gccDebug/dt_GPU.o: dt_GPU.cpp
+	$(CPP_COMPILER) $(Debug_Preprocessor_Definitions) $(Debug_Compiler_Flags) -c dt_GPU.cpp $(Debug_Include_Path) -o gccDebug/dt_GPU.o -lcuda
+	$(CPP_COMPILER) $(Debug_Preprocessor_Definitions) $(Debug_Compiler_Flags) -MM dt_GPU.cpp $(Debug_Include_Path) > gccDebug/dt_GPU.d
 
 ######################################################################################################################################################
 
 
 # Builds the Release configuration...
 .PHONY: Release
-Release: create_folders gccRelease/detect.o gccRelease/dt.o gccRelease/fconvsMT.o gccRelease/featurepyramid.o gccRelease/get_boxes.o gccRelease/laser_func.o gccRelease/load_model.o gccRelease/main.o gccRelease/nms.o gccRelease/resize.o gccRelease/showboxes.o gccRelease/tracking.o gccRelease/conv.o gccRelease/GPU_init.o gccRelease/GPU_function.cubin
-	gcc gccRelease/detect.o gccRelease/dt.o gccRelease/fconvsMT.o gccRelease/featurepyramid.o gccRelease/get_boxes.o gccRelease/laser_func.o gccRelease/load_model.o gccRelease/main.o gccRelease/nms.o gccRelease/resize.o gccRelease/showboxes.o gccRelease/tracking.o gccRelease/conv.o gccRelease/GPU_init.o $(Release_Library_Path) $(Release_Libraries) -Wl,-rpath,./ -o ../gccRelease/CAR_TRACKING.exe
+Release: create_folders gccRelease/detect.o gccRelease/dt.o gccRelease/fconvsMT.o gccRelease/featurepyramid.o gccRelease/get_boxes.o gccRelease/laser_func.o gccRelease/load_model.o gccRelease/main.o gccRelease/nms.o gccRelease/resize.o gccRelease/showboxes.o gccRelease/tracking.o gccRelease/conv.o gccRelease/GPU_init.o gccRelease/GPU_function.cubin gccRelease/dt_GPU.o 	
+	gcc gccRelease/detect.o gccRelease/dt.o gccRelease/fconvsMT.o gccRelease/featurepyramid.o gccRelease/get_boxes.o gccRelease/laser_func.o gccRelease/load_model.o gccRelease/main.o gccRelease/nms.o gccRelease/resize.o gccRelease/showboxes.o gccRelease/tracking.o gccRelease/conv.o gccRelease/GPU_init.o gccRelease/dt_GPU.o $(Release_Library_Path) $(Release_Libraries) -Wl,-rpath,./ -o ../gccRelease/CAR_TRACKING.exe	
 
 # Compiles file detect.cpp for the Release configuration...
 -include gccRelease/detect.d
@@ -238,6 +236,12 @@ gccRelease/GPU_init.o: GPU_init.cpp
 # Compiles file GPU_function.cu for the Release configuration...
 gccRelease/GPU_function.cubin: GPU_function.cu
 	$(CUDA_COMPILER) $(Release_Compiler_Flags) -o ../gccRelease/GPU_function.cubin GPU_function.cu -lcuda
+
+# Compiles file dt_GPU.cpp for the Release configuration...
+-include gccRelease/dt_GPU.d
+gccRelease/dt_GPU.o: dt_GPU.cpp
+	$(CPP_COMPILER) $(Release_Preprocessor_Definitions) $(Release_Compiler_Flags) -c dt_GPU.cpp $(Release_Include_Path) -o gccRelease/dt_GPU.o -lcuda
+	$(CPP_COMPILER) $(Release_Preprocessor_Definitions) $(Release_Compiler_Flags) -MM dt_GPU.cpp $(Release_Include_Path) > gccRelease/dt_GPU.d
 
 
 ######################################################################################################################################################

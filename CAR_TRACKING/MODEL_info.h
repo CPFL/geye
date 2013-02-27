@@ -64,6 +64,8 @@
 //struct information///
 ///////////////////////
 
+#ifndef _MODEL_INFO
+#define _MODEL_INFO
 //struct for model component information
 typedef struct {
 
@@ -133,6 +135,8 @@ typedef struct {
 	Rootfilters *RF;
 	Partfilters *PF;
 }MODEL;
+
+#endif
 
 //Particle filter informations
 typedef struct {

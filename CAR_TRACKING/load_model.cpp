@@ -70,27 +70,27 @@ Model_info * load_modelinfo(char *filename)
 
   //load basic information
   if( sizeof(FLOAT) == sizeof(double) ){
-    b =fscanf(file,"%lf,",&t1);			
-    MI->numcomponent=(int)t1;					//number of components 
-    b =fscanf(file,"%lf,",&t1);		
-    MI->sbin=(int)t1;							//sbin
-    b =fscanf(file,"%lf,",&t1);
-    MI->interval=(int)t1;						//interval
     b =fscanf(file,"%lf,",&t1); 
-    MI->max_Y=(int)t1;							//max_Y
+    MI->numcomponent=(int)t1;   //number of components 
+    b =fscanf(file,"%lf,",&t1); 
+    MI->sbin=(int)t1;           //sbin
+    b =fscanf(file,"%lf,",&t1);
+    MI->interval=(int)t1;       //interval
+    b =fscanf(file,"%lf,",&t1); 
+    MI->max_Y=(int)t1;          //max_Y
     b =fscanf(file,"%lf,",&t1);				
-    MI->max_X=(int)t1;							//max_X
+    MI->max_X=(int)t1;          //max_X
   }else{
     b =fscanf(file,"%f,",&t1);			
-    MI->numcomponent=(int)t1;					//number of components 
+    MI->numcomponent=(int)t1;   //number of components 
     b =fscanf(file,"%f,",&t1);		
-    MI->sbin=(int)t1;							//sbin
+    MI->sbin=(int)t1;           //sbin
     b =fscanf(file,"%f,",&t1);
-    MI->interval=(int)t1;						//interval
+    MI->interval=(int)t1;       //interval
     b =fscanf(file,"%f,",&t1); 
-    MI->max_Y=(int)t1;							//max_Y
+    MI->max_Y=(int)t1;          //max_Y
     b =fscanf(file,"%f,",&t1);				
-    MI->max_X=(int)t1;							//max_X
+    MI->max_X=(int)t1;          //max_X
   }
   //root filter information
   MI->ridx = (int*)malloc(sizeof(int)*MI->numcomponent);
@@ -108,28 +108,28 @@ Model_info * load_modelinfo(char *filename)
     {
       if(sizeof(FLOAT)==sizeof(double)) {
         b =fscanf(file,"%lf,",&t1);			
-        MI->ridx[ii]=(int)t1-1;				//root index
+        MI->ridx[ii]=(int)t1-1; //root index
         b =fscanf(file,"%lf,",&t1);			
-        MI->oidx[ii]=(int)t1-1;				//offset index
+        MI->oidx[ii]=(int)t1-1; //offset index
         b =fscanf(file,"%lf,",&t1);		
-        MI->offw[ii]=t1;					//offset weight (FLOAT)
+        MI->offw[ii]=t1;        //offset weight (FLOAT)
         b =fscanf(file,"%lf,%lf,",&t1,&t2);
-        MI->rsize[ii*2]=(int)t1;			//rsize (Y)
-        MI->rsize[ii*2+1]=(int)t2;			//rsize (X)
+        MI->rsize[ii*2]=(int)t1;   //rsize (Y)
+        MI->rsize[ii*2+1]=(int)t2; //rsize (X)
         b =fscanf(file,"%lf,",&t1);		
-        MI->numpart[ii]=(int)t1;			//number of part filter
+        MI->numpart[ii]=(int)t1; //number of part filter
       }else{
         b =fscanf(file,"%f,",&t1);			
-        MI->ridx[ii]=(int)t1-1;				//root index
+        MI->ridx[ii]=(int)t1-1; //root index
         b =fscanf(file,"%f,",&t1);			
-        MI->oidx[ii]=(int)t1-1;				//offset index
+        MI->oidx[ii]=(int)t1-1; //offset index
         b =fscanf(file,"%f,",&t1);		
-        MI->offw[ii]=t1;					//offset weight (FLOAT)
+        MI->offw[ii]=t1;        //offset weight (FLOAT)
         b =fscanf(file,"%f,%f,",&t1,&t2);
-        MI->rsize[ii*2]=(int)t1;			//rsize (Y)
-        MI->rsize[ii*2+1]=(int)t2;			//rsize (X)
+        MI->rsize[ii*2]=(int)t1;   //rsize (Y)
+        MI->rsize[ii*2+1]=(int)t2; //rsize (X)
         b =fscanf(file,"%f,",&t1);		
-        MI->numpart[ii]=(int)t1;			//number of part filter
+        MI->numpart[ii]=(int)t1; //number of part filter
       }
 
       MI->pidx[ii]=(int*)malloc(sizeof(int)*MI->numpart[ii]);
@@ -140,17 +140,17 @@ Model_info * load_modelinfo(char *filename)
         {
           if(sizeof(FLOAT)==sizeof(double)) {
             b =fscanf(file,"%lf,",&t1);			
-            MI->pidx[ii][jj]=(int)t1-1;				//part index
+            MI->pidx[ii][jj]=(int)t1-1; //part index
             b =fscanf(file,"%lf,",&t1);			
-            MI->didx[ii][jj]=(int)t1-1;				//define-index of part
+            MI->didx[ii][jj]=(int)t1-1; //define-index of part
             b =fscanf(file,"%lf,%lf,",&t1,&t2);
             MI->psize[ii][jj*2]=(int)t1;
             MI->psize[ii][jj*2+1]=(int)t2;
           }else{
             b =fscanf(file,"%f,",&t1);			
-            MI->pidx[ii][jj]=(int)t1-1;				//part index
+            MI->pidx[ii][jj]=(int)t1-1; //part index
             b =fscanf(file,"%f,",&t1);			
-            MI->didx[ii][jj]=(int)t1-1;				//define-index of part
+            MI->didx[ii][jj]=(int)t1-1; //define-index of part
             b =fscanf(file,"%f,%f,",&t1,&t2);
             MI->psize[ii][jj*2]=(int)t1;
             MI->psize[ii][jj*2+1]=(int)t2;

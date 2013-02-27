@@ -133,11 +133,11 @@ FLOAT ***fconvsMT_GPU(CUdeviceptr featp2_dev, FLOAT **filter,int *sym_info,int s
       
       
       if (height < 1 || width < 1)
-		{
+        {
           printf("Invalid input: B should be smaller than A\n");
           printf("height %d, width %d\n", height, width);  
           exit(0);
-		}
+        }
       
 
       switch(calc_flag){

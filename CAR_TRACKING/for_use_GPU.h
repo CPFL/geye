@@ -2,12 +2,92 @@
 #define _CUDA_H
 #include <cuda.h>
 #endif
+
+#ifndef _SWITCH_FLOAT_H
+#define _SWITCH_FLOAT_H
 #include "switch_float.h"
+#endif
+
+#ifndef _MODEL_INFO
+#define _MODEL_INFO
+//struct for model component information
+typedef struct {
+    
+    //basic information
+    //from xxxcomp.csv
+    int numcomponent;	//number of component
+    int sbin;			//cell size
+    int interval;		//interval (for hierachical detection)
+    int max_X;
+    int max_Y;
+    //from calculation
+    int padx;			//pad information
+    int pady;
+    int max_scale;
+    //image size information
+    int IM_WIDTH;
+    int IM_HEIGHT;
+    
+//per root
+    int *ridx;			//root index information
+    int *oidx;			//offsetindex information
+    FLOAT *offw;		//offset weight
+    int *rsize;			//root size
+    int *numpart;		//number of part filter per component
+
+//per part
+    int **pidx;			//part index information
+    int **didx;			//define index of part
+    int **psize;
+
+//defs
+    FLOAT *def;	//defs
+    int *anchor;	//anchor
+
+//least_square info
+    FLOAT **x1;
+    FLOAT **y1;
+    FLOAT **x2;
+    FLOAT **y2;
+
+    bool ini;	//flag for initialization
+    FLOAT ratio;	//ratio of zooming image 
+
+}Model_info;
+
+//struct for root_filter_information
+typedef struct {
+    int NoR;				//number of root filter
+    int **root_size;		//size of root filter
+    FLOAT **rootfilter;	//weight of root filter
+    int *rootsym;			//symmetric information
+}Rootfilters;
+
+//struct for part_filter_information
+typedef struct {
+    int NoP;				//number of part filter
+    int **part_size;		//size of part filter
+    FLOAT **partfilter;	//weight of root filter
+    int *part_partner;		//symmetric-partner information
+    int *part_sym;			//symmetric information of part filter
+}Partfilters;
+
+
+//model information
+typedef struct {
+    Model_info *MI;
+    Rootfilters *RF;
+    Partfilters *PF;
+}MODEL;
+#endif
+
+
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-    
+
+
 struct thread_data {
     FLOAT *A;
     FLOAT *B;
@@ -19,14 +99,12 @@ struct thread_data {
     int C_dims[2];
 };
     
-    
-    
-    
+        
 /* define variables for using GPU */
 
 extern CUdevice dev, dev2;
 extern CUcontext ctx, ctx2;
-extern CUfunction func_process_root, func_process_part;
+extern CUfunction func_process_root, func_process_part, func_dt1d_x, func_dt1d_y, func_calc_a_score;
 extern CUmodule module;
 extern int NR_MAXTHREADS_X, NR_MAXTHREADS_Y;
 
@@ -46,12 +124,17 @@ extern FLOAT ***fconvsMT_GPU(CUdeviceptr featp2_dev, FLOAT **filter,int *sym_inf
 #define ROOT 0
 #define PART 1
 
+extern FLOAT *dt_GPU(FLOAT *vals,FLOAT ax,FLOAT bx,FLOAT ay,FLOAT by,int *dims,int *Ix,int *Iy);
+
+
+/* extern void nucom_GPU(int interval, int L_MAX, int sbin, FLOAT *scales, int *FSIZE, int pady, MODEL *MO, int padx, FLOAT **Tboxes, int NoC, int **rm_size_array, int **pm_size_array, FLOAT ***rootmatch, FLOAT ***partmatch, const int *numpart, int NoP, FLOAT thresh, FLOAT *A_SCORE, int **psize, int *b_nums, int *D_NUMS); */
 
 /* switch define sentence  which use original source or GPU function */
 //#define ORIGINAL
 
 //#define SEPARETE_MEM
 
+#define SEQ_NUCOM
 
     
 #ifdef __cplusplus
