@@ -9,5 +9,3 @@ CAR_TRACKING/gccRelease/
 gccDebug/
 gccRelease/
 
-#ignore "*.dat" file
-*.dat
