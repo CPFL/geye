@@ -16,7 +16,7 @@
 //extern CUdevice dev;
 CUdevice dev, dev2;
 CUcontext ctx, ctx2;
-CUfunction func_process_root, func_process_part, func_dt1d_x, func_dt1d_y, func_calc_a_score;
+CUfunction func_process_root, func_process_part, func_dt1d_x, func_dt1d_y, func_calc_a_score, func_inverse_Q, func_calc_feature;
 CUmodule module;
 int NR_MAXTHREADS_X, NR_MAXTHREADS_Y;
 
@@ -93,13 +93,19 @@ void init_cuda(void)
     
     res = cuModuleGetFunction(&func_process_root, module, "process_root");
     if(res != CUDA_SUCCESS){
-      printf("\ncuGetFunction failed: res = %s\n", conv(res));
+      printf("\ncuGetFunction(process_root) failed: res = %s\n", conv(res));
       exit(1);
     }
 
     res = cuModuleGetFunction(&func_process_part, module, "process_part");
     if(res != CUDA_SUCCESS){
-      printf("\ncuGetFunction failed: res = %s\n", conv(res));
+      printf("\ncuGetFunction(process_part) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+
+    res = cuModuleGetFunction(&func_inverse_Q, module, "inverse_Q");
+    if(res != CUDA_SUCCESS){
+      printf("\ncuGetFunction(inverse_Q) failed: res = %s\n", conv(res));
       exit(1);
     }
 
@@ -117,7 +123,13 @@ void init_cuda(void)
 
     res = cuModuleGetFunction(&func_calc_a_score, module, "calc_a_score");
     if(res != CUDA_SUCCESS){
-      printf("\ncuGetFunction(dt1d_y) failed: res = %s\n", conv(res));
+      printf("\ncuGetFunction(calc_a_score) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+
+    res = cuModuleGetFunction(&func_calc_feature, module, "calc_feature");
+    if(res != CUDA_SUCCESS){
+      printf("\ncuGetFunction(calc_feature) failed: res = %s\n", conv(res));
       exit(1);
     }
     

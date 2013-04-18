@@ -22,6 +22,8 @@
 typedef int errno_t;
 #endif
 
+int sum_size_def_array;
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -54,6 +56,8 @@ void free_model(MODEL *MO);						//release model-information (externed to main.c
 //load model basic information
 Model_info * load_modelinfo(char *filename)
 {	
+  CUresult res;
+
   FILE *file;		//File
   errno_t err;	//err ( for fopen)
   Model_info *MI=(Model_info*)malloc(sizeof(Model_info));		//Model information
@@ -165,9 +169,18 @@ Model_info * load_modelinfo(char *filename)
     b =fscanf(file,"%f,",&t1);	
   }
   int DefL = int(t1);
-  MI->def = (FLOAT*)malloc(sizeof(FLOAT)*DefL*4);
+  //MI->def = (FLOAT*)malloc(sizeof(FLOAT)*DefL*4);
+  res = cuMemHostAlloc((void **)&(MI->def), sizeof(FLOAT)*DefL*4, CU_MEMHOSTALLOC_DEVICEMAP);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemHostAlloc(MI->def) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+  sum_size_def_array = sizeof(FLOAT)*DefL*4;
+
+
   MI->anchor = (int*)malloc(sizeof(int)*DefL*2);
-  
+
+
   for (int kk=0;kk<DefL;kk++)
     {
       if(sizeof(FLOAT)==sizeof(double)) {
@@ -568,7 +581,14 @@ void free_model(MODEL *MO)
       s_free(MO->MI->y2[ii]);
     }
   s_free(MO->MI->anchor);
-  s_free(MO->MI->def);
+
+  //  s_free(MO->MI->def);
+  res = cuMemFreeHost((void *)MO->MI->def);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFreeHost(MO->MI->def) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
   s_free(MO->MI->numpart);
   s_free(MO->MI->offw);
   s_free(MO->MI->oidx);

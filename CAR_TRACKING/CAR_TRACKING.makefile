@@ -125,12 +125,12 @@ gccDebug/conv.o: conv.c
 # Compiles file GPU_init.cpp for the Debug configuration...
 -include gccDebug/GPU_init.d
 gccDebug/GPU_init.o: GPU_init.cpp
-	$(CPP_COMPILER) $(Debug_Preprocessor_Definitions) $(Debug_Compiler_Flags) -c GPU_init.cpp $(Debug_Include_Path) -o gccDebug/GPU_init.o -lcuda
+	$(CPP_COMPILER) $(Debug_Preprocessor_Definitions) $(Debug_Compiler_Flags) -c GPU_init.cpp $(Debug_Include_Path) -o gccDebug/GPU_init.o -lcuda 
 	$(CPP_COMPILER) $(Debug_Preprocessor_Definitions) $(Debug_Compiler_Flags) -MM GPU_init.cpp $(Debug_Include_Path) > gccDebug/GPU_init.d
 
 # Compiles file GPU_function.cu for the Debug configuration...
 gccDebug/GPU_function.cubin: GPU_function.cu
-	$(CUDA_COMPILER) $(Debug_Compiler_Flags) -G  -o ../gccDebug/GPU_function.cubin GPU_function.cu -lcuda
+	$(CUDA_COMPILER) $(Debug_Compiler_Flags) -G  -o ../gccDebug/GPU_function.cubin GPU_function.cu -lcuda -lm
 
 # Compiles file dt_GPU.cpp for the Debug configuration...
 -include gccDebug/dt_GPU.d
@@ -235,7 +235,7 @@ gccRelease/GPU_init.o: GPU_init.cpp
 
 # Compiles file GPU_function.cu for the Release configuration...
 gccRelease/GPU_function.cubin: GPU_function.cu
-	$(CUDA_COMPILER) $(Release_Compiler_Flags) -o ../gccRelease/GPU_function.cubin GPU_function.cu -lcuda
+	$(CUDA_COMPILER) $(Release_Compiler_Flags) -o ../gccRelease/GPU_function.cubin GPU_function.cu -lcuda -lm
 
 # Compiles file dt_GPU.cpp for the Release configuration...
 -include gccRelease/dt_GPU.d

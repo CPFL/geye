@@ -1,5 +1,6 @@
 /* typedef to switch float and double */
 typedef float FLOAT;
+//typedef double FLOAT;
 
 #ifndef TVSUB
 #define TVSUB
@@ -24,6 +25,11 @@ static inline void tvsub
 /* for measurement */
 /*************************************/
 #endif
+
+extern struct timeval tv_memcpy_start, tv_memcpy_end;
+extern float time_memcpy;
+extern struct timeval tv_kernel_start, tv_kernel_end;
+extern float time_kernel;
 
 
 
