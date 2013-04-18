@@ -178,6 +178,13 @@ FLOAT *detect(IplImage *IM,MODEL *MO,FLOAT thresh,int *D_NUMS,FLOAT *A_SCORE)
   gettimeofday(&tv_calc_f_pyramid_start, NULL);
   FLOAT **feature=calc_f_pyramid(IM,MO->MI,featsize,scales);		
   gettimeofday(&tv_calc_f_pyramid_end, NULL);
+  tvsub(&tv_calc_f_pyramid_end, &tv_calc_f_pyramid_start, &tv);
+
+  time_kernel += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+
+  printf("\n");
+  printf("calc_f_pyramid %f[ms]\n", tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0);
+
   t2=clock();
 
   //detect boundary boxes
@@ -187,23 +194,25 @@ FLOAT *detect(IplImage *IM,MODEL *MO,FLOAT thresh,int *D_NUMS,FLOAT *A_SCORE)
   t3=clock();
 
 
-#if 0
-  tvsub(&tv_ini_scales_end, &tv_ini_scales_start, &tv);
-  time_ini_scales = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+#if 1
+  // tvsub(&tv_ini_scales_end, &tv_ini_scales_start, &tv);
+  // time_ini_scales = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
-  tvsub(&tv_ini_feat_size_end, &tv_ini_feat_size_start, &tv);
-  time_ini_feat_size = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+  // tvsub(&tv_ini_feat_size_end, &tv_ini_feat_size_start, &tv);
+  // time_ini_feat_size = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
-  tvsub(&tv_calc_f_pyramid_end, &tv_calc_f_pyramid_start, &tv);
-  time_calc_f_pyramid = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+  // tvsub(&tv_calc_f_pyramid_end, &tv_calc_f_pyramid_start, &tv);
+  // time_calc_f_pyramid = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
-  tvsub(&tv_get_boxes_end, &tv_get_boxes_start, &tv);
-  time_get_boxes = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+  // tvsub(&tv_get_boxes_end, &tv_get_boxes_start, &tv);
+  // time_get_boxes = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
-  printf("ini_scales : %f\n", time_ini_scales);
-  printf("ini_feat_size : %f\n", time_ini_feat_size);
-  printf("calc_f_pyramid : %f\n", time_calc_f_pyramid);
-  printf("get_boxes : %f\n", time_get_boxes);
+  // printf("ini_scales : %f\n", time_ini_scales);
+  // printf("ini_feat_size : %f\n", time_ini_feat_size);
+  //  printf("calc_f_pyramid : %f\n", time_calc_f_pyramid);
+  // printf("get_boxes : %f\n", time_get_boxes);
+
+  printf("\n");
 #endif
 
   

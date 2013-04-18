@@ -65,9 +65,14 @@ char WIN_B[]="2D-mapping";			//movie name
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 FILE *resFP;
 
+struct timeval tv_memcpy_start, tv_memcpy_end;
+float time_memcpy;
+struct timeval tv_kernel_start, tv_kernel_end;
+float time_kernel;
+
+
 int main(void)
 {
-
   FILE* fp;                   //file pointer
   CvCapture *capt;            //movie file capture
   fpos_t curpos,fsize;        //file size
@@ -150,6 +155,8 @@ int main(void)
   for(int im=1;im<=11;im++)
     {
       gettimeofday(&tv_1process_start, NULL);
+      time_memcpy = 0;
+      time_kernel = 0;
 
       //IplImage *IMG;	//inputed-image 
       ////load movie 
@@ -293,7 +300,11 @@ int main(void)
       tvsub(&tv_1process_end, &tv_1process_start, &tv);
       one_process = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
-      printf("car_detection : %f\n", time_car_detection);
+      //      printf("car_detection : %f\n", time_car_detection);
+
+      printf("memory copy    %f\n", time_memcpy);
+      printf("kernel execute %f\n", time_kernel);
+
       printf("1process : %f\n", one_process);
 #endif
 

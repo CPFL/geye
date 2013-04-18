@@ -19,7 +19,13 @@
 #include "for_use_GPU.h"
 #include "switch_float.h"
 
-
+CUdeviceptr pm_size_array_dev;
+CUdeviceptr PIDX_array_dev;
+CUdeviceptr def_array_dev;
+CUdeviceptr DID_4_array_dev;
+CUdeviceptr numpart_dev;
+int max_numpart = 0;
+int max_RL_S = 0;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -31,9 +37,9 @@
 
 //subfunctions for detection
 
-FLOAT *padarray(FLOAT *feature,int *size,int padx,int pady);		//padd zeros to image 
-FLOAT *flip_feat(FLOAT *feat,int *size);							//filip feature order (to reduce calculation time)
-int *get_gmpc(FLOAT *score,FLOAT thresh,int *ssize,int *GMN);		//get good matches
+FLOAT *padarray(FLOAT *feature,int *size,int padx,int pady); //padd zeros to image 
+FLOAT *flip_feat(FLOAT *feat,int *size); //filip feature order (to reduce calculation time)
+int *get_gmpc(FLOAT *score,FLOAT thresh,int *ssize,int *GMN); //get good matches
 
 //calculate root rectangle-cooridnate 
 FLOAT *rootbox(int x,int y,FLOAT scale,int padx,int pady,int *rsize);	
@@ -43,7 +49,7 @@ FLOAT *partbox(int x,int y,int ax,int ay,FLOAT scale,int padx,int pady,int *psiz
 
 //calculate accumulated HOG detector score
 //void calc_a_score(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_info *MI,FLOAT scale);
-void calc_a_score_GPU(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_info *MI,FLOAT scale, int size_score);
+void calc_a_score_GPU(FLOAT *ac_score, FLOAT **score, int *ssize_start, Model_info *MI, FLOAT scale, int *size_score_array, int NoC);
 
 //Object-detection function (extended to main)
 FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,FLOAT *A_SCORE,FLOAT thresh);
@@ -295,8 +301,18 @@ void calc_a_score(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_info 
 
 extern size_t size_A_SCORE;
 
-void calc_a_score_GPU(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_info *MI,FLOAT scale, int size_score)
+void calc_a_score_GPU(
+  FLOAT *ac_score,
+  FLOAT **score,
+  int *ssize_start,
+  Model_info *MI,
+  FLOAT scale, 
+  int *size_score_array,
+  int NoC
+                      )
 {
+  CUresult res;
+
   const int L_AS = MI->IM_HEIGHT*MI->IM_WIDTH;
   const int IHEI = MI->IM_HEIGHT;
   const int IWID = MI->IM_WIDTH;
@@ -304,12 +320,38 @@ void calc_a_score_GPU(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_i
   int pady_n = MI->pady;
   int padx_n = MI->padx;
   int block_pad = (int)(scale/2.0);
-  
-  int RY = (int)((FLOAT)rsize[0]*scale/2.0-1.0+block_pad);
-  int RX = (int)((FLOAT)rsize[1]*scale/2.0-1.0+block_pad);
 
-  CUresult res;
+  struct timeval tv;  
+
+  int *RY_array, *RX_array;
+  res = cuMemHostAlloc((void**)&RY_array, NoC*sizeof(int), CU_MEMHOSTALLOC_DEVICEMAP);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemHostAlloc(RY_array) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemHostAlloc((void**)&RX_array, NoC*sizeof(int), CU_MEMHOSTALLOC_DEVICEMAP);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemHostAlloc(RX_array) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  for(int jj=0; jj<NoC; jj++) {
+    int rsize[2] = {MI->rsize[jj*2], MI->rsize[jj*2+1]};
+    
+    RY_array[jj] = (int)((FLOAT)rsize[0]*scale/2.0-1.0+block_pad);
+    RX_array[jj] = (int)((FLOAT)rsize[1]*scale/2.0-1.0+block_pad);
+  }
+  
   CUdeviceptr ac_score_dev, score_dev;
+  CUdeviceptr ssize_dev, size_score_dev;
+  CUdeviceptr RY_dev, RX_dev;
+
+
+  int size_score=0;
+  for(int jj=0; jj<NoC; jj++) {
+    size_score += size_score_array[jj];
+  }
 
   /* allocate GPU memory */
   res = cuMemAlloc(&ac_score_dev, size_A_SCORE);
@@ -324,6 +366,31 @@ void calc_a_score_GPU(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_i
     exit(1);
   }
 
+  res = cuMemAlloc(&ssize_dev, NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(ssize) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemAlloc(&size_score_dev, NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(size_score) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemAlloc(&RY_dev, NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(RY) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemAlloc(&RX_dev, NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(RX) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  gettimeofday(&tv_memcpy_start, NULL);
   /* upload date to GPU */
   res = cuMemcpyHtoD(ac_score_dev, ac_score, size_A_SCORE);
   if(res != CUDA_SUCCESS) {
@@ -337,19 +404,51 @@ void calc_a_score_GPU(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_i
     exit(1);
   }
 
+  res = cuMemcpyHtoD(ssize_dev, ssize_start, NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(ssize) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemcpyHtoD(size_score_dev, size_score_array, NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(size_score) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemcpyHtoD(RY_dev, RY_array, NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(RY) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemcpyHtoD(RX_dev, RX_array, NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(RX) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  gettimeofday(&tv_memcpy_end, NULL);
+  tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+  time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+
+
   void* kernel_args[] = {
     (void*)&IWID,
     (void*)&IHEI,
     (void*)&scale,
     (void*)&padx_n,
     (void*)&pady_n,
-    (void*)&ssize[0],
-    (void*)&ssize[1],
-    (void*)&RX,
-    (void*)&RY,
+    &RX_dev,
+    &RY_dev,
     &ac_score_dev,
-    &score_dev
+    &score_dev,
+    &ssize_dev,
+    (void*)&NoC,
+    &size_score_dev
   };
+
+
 
 
   int sharedMemBytes = 0;
@@ -365,8 +464,8 @@ void calc_a_score_GPU(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_i
     exit(1);
   }
   
-  NR_MAXTHREADS_X = (int)sqrt((double)max_threads_num);
-  NR_MAXTHREADS_Y = (int)sqrt((double)max_threads_num);
+  NR_MAXTHREADS_X = (int)sqrt((double)max_threads_num/NoC);
+  NR_MAXTHREADS_Y = (int)sqrt((double)max_threads_num/NoC);
   
   thread_num_x = (IWID < NR_MAXTHREADS_X) ? IWID : NR_MAXTHREADS_X;
   thread_num_y = (IHEI < NR_MAXTHREADS_Y) ? IHEI : NR_MAXTHREADS_Y;
@@ -376,7 +475,7 @@ void calc_a_score_GPU(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_i
   if(IWID % thread_num_x != 0) block_num_x++;
   if(IHEI % thread_num_y != 0) block_num_y++;
 
-  
+  gettimeofday(&tv_kernel_start, NULL);
   /* launch GPU kernel */
   res = cuLaunchKernel(
                        func_calc_a_score, // call function
@@ -385,14 +484,14 @@ void calc_a_score_GPU(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_i
                        1,                 // gridDimZ
                        thread_num_x,      // blockDimX
                        thread_num_y,      // blockDimY
-                       1,                 // blockDimZ
+                       NoC,               // blockDimZ
                        sharedMemBytes,    // sharedMemBytes
                        NULL,              // hStream
                        kernel_args,       // kernelParams
                        NULL               // extra
                        );
   if(res != CUDA_SUCCESS) { 
-    printf("cuLaunchKernel(calc_a_score failed : res = %s\n", conv(res));
+    printf("cuLaunchKernel(calc_a_score) failed : res = %s\n", conv(res));
     exit(1);
   }
 
@@ -401,39 +500,22 @@ void calc_a_score_GPU(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_i
     printf("cuCtxSynchronize(calc_a_score) failed: res = %s\n", conv(res));
     exit(1);
   }
+  gettimeofday(&tv_kernel_end, NULL);
+  tvsub(&tv_kernel_end, &tv_kernel_start, &tv);
+  time_kernel += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
 
-
-
-  // for(int ii=0;ii<IWID;ii++)
-  //   {
-  //     int Xn=(int)((FLOAT)ii/scale+padx_n);
-      
-  //     for(int jj=0;jj<IHEI;jj++)
-  //       {
-  //         int Yn =(int)((FLOAT)jj/scale+pady_n);
-
-  //         if(Yn<ssize[0] && Xn<ssize[1])
-  //           {
-  //             FLOAT sc = score[Yn+Xn*ssize[0]]; //get score of pixel
-              
-  //             int Im_Y = jj+RY;
-  //             int Im_X = ii+RX;
-  //             if(Im_Y<IHEI && Im_X<IWID)
-  //               {
-  //                 FLOAT *PP=ac_score+Im_Y+Im_X*IHEI; //consider root rectangle size
-  //                 if(sc>*PP) *PP=sc;                 //save max score
-  //               }
-  //           }
-  //       }
-  //   }
-
+  gettimeofday(&tv_memcpy_start, NULL);
   /* download data from GPU */
   res = cuMemcpyDtoH(ac_score, ac_score_dev, size_A_SCORE);
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyDtoH(ac_score) failed: res = %s\n", conv(res));
     exit(1);
   }
+  gettimeofday(&tv_memcpy_end, NULL);
+  tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+  time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+
 
   /* free GPU memory */
   res = cuMemFree(ac_score_dev);
@@ -447,6 +529,31 @@ void calc_a_score_GPU(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_i
     printf("cuMemFree(score_dev) failed: res = %s\n", conv(res));
     exit(1);
   }
+
+  res = cuMemFree(RY_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(RY_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemFree(RX_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(RX_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  /* free CPU memory */
+  res = cuMemFreeHost(RY_array);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFreeHost(RY_array) failed: res = %s\n", conv(res));
+    exit(1);
+  } 
+
+  res = cuMemFreeHost(RX_array);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFreeHost(RX_array) failed: res = %s\n", conv(res));
+    exit(1);
+  } 
 
 }
 
@@ -480,14 +587,22 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
   float make_c;
   struct timeval tv_nucom_start, tv_nucom_end;
   float nucom;
-  struct timeval tv_dt_start, tv_dt_end;
-  float time_dt=0;
-  struct timeval tv_calc_score_start, tv_calc_score_end;
-  float time_calc_score=0;
+  // struct timeval tv_dt_start, tv_dt_end;
+  // float time_dt=0;
+  // struct timeval tv_calc_score_start, tv_calc_score_end;
+  // float time_calc_score=0;
   struct timeval tv_box_start, tv_box_end;
   float time_box=0;
 
-
+  struct timeval tv_root_score_start, tv_root_score_end;
+  float time_root_score = 0;
+  struct timeval tv_part_score_start, tv_part_score_end;
+  float time_part_score = 0;
+  struct timeval tv_dt_start, tv_dt_end;
+  float time_dt = 0;
+  struct timeval tv_calc_a_score_start, tv_calc_a_score_end;
+  float time_calc_a_score = 0;
+  
 
   gettimeofday(&tv_make_c_start, NULL);
 
@@ -502,10 +617,10 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
   int **rm_size_array = (int **)malloc(sizeof(int *)*L_MAX);
   int **pm_size_array = (int **)malloc(sizeof(int *)*L_MAX);
 
-  FLOAT **Tboxes=(FLOAT**)calloc(LofFeat,sizeof(FLOAT*));		//box coordinate information(Temp)
-  int  *b_nums =(int*)calloc(LofFeat,sizeof(int));				//length of Tboxes 
-  int count = 0;													
-  int D_NUMS=0;													//number of detected boundary box
+  FLOAT **Tboxes=(FLOAT**)calloc(LofFeat,sizeof(FLOAT*)); //box coordinate information(Temp)
+  int  *b_nums =(int*)calloc(LofFeat,sizeof(int)); //length of Tboxes 
+  int count = 0;                                   
+  int D_NUMS=0;                 //number of detected boundary box
   CUresult res;
   
   /* matched score (root and part) */
@@ -523,7 +638,7 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
 
   /* allocate required memory for new_PADsize */
   new_PADsize = (int *)malloc(L_MAX*3*sizeof(int));
-  if(new_PADsize == NULL) { // error semantics
+  if(new_PADsize == NULL) {     // error semantics
     printf("allocate new_PADsize failed\n");
     exit(1);
   }
@@ -655,7 +770,7 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
 
     }  //for (level)  // feature's loop(A's loop) 1level 1picture
 
-  
+
   /* allocate GPU memory and transfer feat, new_PADsize to GPU  */
   CUdeviceptr featp2_dev, new_PADsize_dev;
   res = cuMemAlloc(&featp2_dev, SUM_SIZE_feat);
@@ -670,7 +785,7 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
     exit(1);
   }
 
-
+  gettimeofday(&tv_memcpy_start, NULL);
   res = cuMemcpyHtoD(featp2_dev, featp2[0], SUM_SIZE_feat);
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyHtoD(featp2) failed: res = %s\n", conv(res));
@@ -682,22 +797,71 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
     printf("cuMemcpyHtoD(new_PADsize) failed: res = %s\n", conv(res));
     exit(1);
   }
+  gettimeofday(&tv_memcpy_end, NULL);
+  tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+  time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+
 
 
 
 
   ///////root calculation/////////
   /* calculate model score (only root) */
-  rootmatch = fconvsMT_GPU(featp2_dev, rootfilter, rootsym, 1, NoR, new_PADsize, new_PADsize_dev, RF_size, rm_size_array, L_MAX, interval, FSIZE, padx, pady, MO->MI->max_X, MO->MI->max_Y, ROOT);   
+  gettimeofday(&tv_root_score_start, NULL);
+  rootmatch = fconvsMT_GPU(
+                           featp2_dev, 
+                           rootfilter, 
+                           rootsym, 
+                           1, 
+                           NoR, 
+                           new_PADsize, 
+                           new_PADsize_dev, 
+                           RF_size, rm_size_array, 
+                           L_MAX, 
+                           interval, 
+                           FSIZE, 
+                           padx, 
+                           pady, 
+                           MO->MI->max_X, 
+                           MO->MI->max_Y, 
+                           ROOT
+                           );   
+  gettimeofday(&tv_root_score_end, NULL);
+  tvsub(&tv_root_score_end, &tv_root_score_start, &tv);
+  time_root_score += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
   
   
+
   ///////part calculation/////////
   if(NoP>0)
     {
       /* calculate model score (only part) */
-      partmatch = fconvsMT_GPU(featp2_dev, partfilter, part_sym, 1, NoP, new_PADsize, new_PADsize_dev, part_size, pm_size_array, L_MAX, interval, FSIZE, padx, pady, MO->MI->max_X, MO->MI->max_Y, PART);
+      gettimeofday(&tv_part_score_start, NULL);
+      partmatch = fconvsMT_GPU(
+                               featp2_dev, 
+                               partfilter, 
+                               part_sym, 
+                               1, 
+                               NoP, 
+                               new_PADsize, 
+                               new_PADsize_dev, 
+                               part_size, 
+                               pm_size_array, 
+                               L_MAX, 
+                               interval, 
+                               FSIZE, 
+                               padx, 
+                               pady, 
+                               MO->MI->max_X,
+                               MO->MI->max_Y, 
+                               PART
+                               );
+      gettimeofday(&tv_part_score_end, NULL);		
+      tvsub(&tv_part_score_end, &tv_part_score_start, &tv);
+      time_part_score += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+      
     }
-
+  
 
   
 
@@ -720,230 +884,882 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
     
   count = 0;
   D_NUMS = 0;
-#ifdef SEQ_NUCOM
-  for (int level=interval; level<L_MAX; level++)  // feature's loop(A's loop) 1level 1picture
-    {
-      /* parameters (related for level) */
-      int L=level-interval;
-      /* matched score size matrix */
-      FLOAT scale=(FLOAT)sbin/scales[level];
+
+
+
+  /* prepare for paralell execution of nucom */  
+  res = cuMemAlloc(&pm_size_array_dev, NoP*2*L_MAX*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(pm_size_array_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  gettimeofday(&tv_memcpy_start, NULL);
+  res = cuMemcpyHtoD(pm_size_array_dev, &pm_size_array[0][0], NoP*2*L_MAX*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(pm_size_array_dev) falied: res = %s\n", conv(res));
+    exit(1);
+  }
+  gettimeofday(&tv_memcpy_end, NULL);
+  tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+  time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+
+
+  res = cuMemAlloc(&def_array_dev, sum_size_def_array);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(def_array_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  gettimeofday(&tv_memcpy_start, NULL);
+  res = cuMemcpyHtoD(def_array_dev, MO->MI->def, sum_size_def_array);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(def_array_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+  gettimeofday(&tv_memcpy_end, NULL);
+  tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+  time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+
+
+  res = cuMemAlloc(&numpart_dev, NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(numpart_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  gettimeofday(&tv_memcpy_start, NULL);
+  res = cuMemcpyHtoD(numpart_dev, numpart, NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(cuMemcpyHtoD(numpart_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+  gettimeofday(&tv_memcpy_end, NULL);
+  tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+  time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+
+
+
+
+  /////nucom loop start 
+
+  // for (int level=interval; level<L_MAX; level++)  // feature's loop(A's loop) 1level 1picture
+  //   {
+  //     /* parameters (related for level) */
+  //     int L=level-interval;
+  //     /* matched score size matrix */
+  //     FLOAT scale=(FLOAT)sbin/scales[level];
       
-      /**************************************************************************/      
-      /* loop conditon */
+  //     /**************************************************************************/      
+  //     /* loop conditon */
       
-      if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
-        {
-          Tboxes[count]=NULL;
-          count++;
-          continue;
-        }
+  //     if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+  //       {
+  //         Tboxes[count]=NULL;
+  //         count++;
+  //         continue;
+  //       }
       
-      /* loop conditon */
-      /**************************************************************************/
+  //     /* loop conditon */
+  //     /**************************************************************************/
       
-      ////nucom
-      /* combine root and part score and detect boundary box for each-component */
-      for(int jj=0;jj<NoC;jj++)
-        {
+  int **RL_array = (int **)malloc((L_MAX-interval)*sizeof(int*));
+  int *dst_RL = (int *) malloc(NoC*(L_MAX-interval)*sizeof(int));
+
+  int **RI_array = (int **)malloc((L_MAX-interval)*sizeof(int*));
+  int *dst_RI = (int *)malloc(NoC*(L_MAX-interval)*sizeof(int));
+
+  int **OI_array = (int **)malloc((L_MAX-interval)*sizeof(int*));
+  int *dst_OI = (int *)malloc((NoC)*(L_MAX-interval)*sizeof(int));
+
+  int **RL_S_array = (int **)malloc((L_MAX-interval)*sizeof(int*));
+  int *dst_RL_S = (int *)malloc(NoC*(L_MAX-interval)*sizeof(int));
+
+
+  FLOAT **OFF_array = (FLOAT **)malloc((L_MAX-interval)*sizeof(FLOAT*));
+  FLOAT *dst_OFF = (FLOAT *)malloc(NoC*(L_MAX-interval)*sizeof(FLOAT));
+
+  FLOAT ***SCORE_array = (FLOAT ***)malloc((L_MAX-interval)*sizeof(FLOAT **));
+  FLOAT **sub_dst_SCORE = (FLOAT **)malloc(NoC*(L_MAX-interval)*sizeof(FLOAT*));
+
+  
+  
+  unsigned long long int pointer_RL = (unsigned long long int)dst_RL;
+  unsigned long long int pointer_RI = (unsigned long long int)dst_RI;
+  unsigned long long int pointer_OI = (unsigned long long int)dst_OI;
+  unsigned long long int pointer_RL_S = (unsigned long long int)dst_RL_S;
+  unsigned long long int pointer_OFF = (unsigned long long int)dst_OFF;
+  unsigned long long int pointer_SCORE = (unsigned long long int)sub_dst_SCORE;
+  for (int level=interval; level<L_MAX; level++) {
+    
+    int L=level-interval;        
+    
+    RL_array[L] = (int *)pointer_RL;
+    pointer_RL += (unsigned long long int)NoC*sizeof(int);
+    
+    RI_array[L] = (int *)pointer_RI;
+    pointer_RI += (unsigned long long int)NoC*sizeof(int);
+    
+    OI_array[L] = (int *)pointer_OI;
+    pointer_OI += (unsigned long long int)NoC*sizeof(int);
+    
+    RL_S_array[L] = (int *)pointer_RL_S;
+    pointer_RL_S += (unsigned long long int)NoC*sizeof(int);
+    
+    OFF_array[L] = (FLOAT *)pointer_OFF;
+    pointer_OFF += (unsigned long long int)NoC*sizeof(FLOAT);
+
+    SCORE_array[L] = (FLOAT **)pointer_SCORE;
+    pointer_SCORE += (unsigned long long int)NoC*sizeof(FLOAT*);
+    
+  }
+
+
+
+
+      int sum_RL_S = 0;
+      int sum_SNJ = 0;
+      /* prepare for parallel execution */
+      for(int level=interval; level<L_MAX; level++) {
+        int L = level - interval;
+        /**************************************************************************/      
+        /* loop conditon */
+        
+        if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+          {
+            continue;
+          }
+        
+        /* loop conditon */
+        /**************************************************************************/
+        
+        for(int jj=0; jj<NoC; jj++) {
+          
           /* root score + offset */
-          int RL = rm_size_array[level][jj*2]*rm_size_array[level][jj*2+1];  //length of root-matching 
-          int RI = MO->MI->ridx[jj];  //root-index
-          int OI = MO->MI->oidx[jj];  //offset-index
-          int RL_S =sizeof(FLOAT)*RL;
-          
-          FLOAT OFF = MO->MI->offw[RI];  //offset information
-          FLOAT *SCORE = (FLOAT*)malloc(RL_S);  //Matching score matrix
+          RL_array[L][jj] = rm_size_array[level][jj*2]*rm_size_array[level][jj*2+1];  //length of root-matching 
+          RI_array[L][jj] = MO->MI->ridx[jj];  //root-index
+          OI_array[L][jj] =  MO->MI->oidx[jj];  //offset-index
+          RL_S_array[L][jj] =sizeof(FLOAT)*RL_array[L][jj];
 
+          
+          OFF_array[L][jj] = MO->MI->offw[RI_array[L][jj]];  //offset information
+          
+          
+          /* search max values */
+          max_RL_S = (max_RL_S < RL_S_array[L][jj]) ? RL_S_array[L][jj] : max_RL_S;
+          max_numpart = (max_numpart < numpart[jj]) ? numpart[jj] : max_numpart;
+        }
+      }
+
+      sum_RL_S = max_RL_S*NoC*(L_MAX-interval);
+
+      /* root matching size */
+      sum_SNJ = sizeof(int*)*max_numpart*NoC*(L_MAX-interval);
+
+      /* consolidated allocation for SCORE_array and distribute region */
+      FLOAT *dst_SCORE = (FLOAT *)malloc(sum_RL_S);
+      pointer_SCORE = (unsigned long long int)dst_SCORE;
+      for(int level=interval; level<L_MAX; level++) {
+        int L = level - interval;
+        /**************************************************************************/      
+        /* loop conditon */
+        
+        if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+          {
+            continue;
+          }
+        
+        /* loop conditon */
+        /**************************************************************************/
+        
+        for(int jj=0; jj<NoC; jj++) {
+          SCORE_array[L][jj] = (FLOAT *)pointer_SCORE;
+          pointer_SCORE += (unsigned long long int)max_RL_S;
+        }
+      }
+
+      /* add offset */
+      for(int level=interval; level<L_MAX; level++) {
+        int L = level - interval;
+        /**************************************************************************/      
+        /* loop conditon */
+        
+        if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+          {
+            continue;
+          }
+        
+        /* loop conditon */
+        /**************************************************************************/
+        
+        for(int jj=0; jj<NoC; jj++) {
+          memcpy(SCORE_array[L][jj], rootmatch[level][jj], RL_S_array[L][jj]);
+          FLOAT *SC_S = SCORE_array[L][jj];
+          FLOAT *SC_E = SCORE_array[L][jj]+RL_array[L][jj];
+          while(SC_S<SC_E) *(SC_S++)+=OFF_array[L][jj];
+        }
+      }
+
+
+      /* anchor matrix */  // consolidated allocation 
+      int ***ax_array = (int ***)malloc((L_MAX-interval)*sizeof(int **));
+      int **sub_dst_ax = (int **)malloc(NoC*(L_MAX-interval)*sizeof(int *));
+      int *dst_ax = (int *)malloc(sum_SNJ);
+
+      int ***ay_array = (int ***)malloc((L_MAX-interval)*sizeof(int **));
+      int **sub_dst_ay = (int **)malloc(NoC*(L_MAX-interval)*sizeof(int *));
+      int *dst_ay = (int *)malloc(sum_SNJ);
+
+      /* boudary index */  // consolidated allocation
+      int ****Ix_array =(int ****)malloc((L_MAX-interval)*sizeof(int ***));
+      int ***sub_dst_Ix = (int ***)malloc(NoC*(L_MAX-interval)*sizeof(int **));
+      int **dst_Ix = (int **)malloc(sum_SNJ);
+
+      int ****Iy_array = (int ****)malloc((L_MAX-interval)*sizeof(int ***));
+      int ***sub_dst_Iy = (int ***)malloc(NoC*(L_MAX-interval)*sizeof(int **));
+      int **dst_Iy = (int **)malloc(sum_SNJ);
+
+      /* distribute region */
+      unsigned long long int pointer_ax = (unsigned long long int)sub_dst_ax;
+      unsigned long long int pointer_ay = (unsigned long long int)sub_dst_ay;
+      unsigned long long int pointer_Ix = (unsigned long long int)sub_dst_Ix;
+      unsigned long long int pointer_Iy = (unsigned long long int)sub_dst_Iy;
+      for(int level=interval; level<L_MAX; level++) {
+        int L = level - interval;
+        /**************************************************************************/      
+        /* loop conditon */
+        
+        if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+          {
+            continue;
+          }
+        
+        /* loop conditon */
+        /**************************************************************************/
+        
+
+        ax_array[L] = (int **)pointer_ax;
+        pointer_ax += (unsigned long long int)(NoC*sizeof(int*));
+
+        ay_array[L] = (int **)pointer_ay;
+        pointer_ay += (unsigned long long int)(NoC*sizeof(int*));
+
+        Ix_array[L] = (int ***)pointer_Ix;
+        pointer_Ix += (unsigned long long int)(NoC*sizeof(int**));
+
+        Iy_array[L] = (int ***)pointer_Iy;
+        pointer_Iy += (unsigned long long int)(NoC*sizeof(int**));
+      }
+
+
+      pointer_ax = (unsigned long long int)dst_ax;
+      pointer_ay = (unsigned long long int)dst_ay;
+      pointer_Ix = (unsigned long long int)dst_Ix;
+      pointer_Iy = (unsigned long long int)dst_Iy;
+      for(int level=interval; level<L_MAX; level++) {
+        int L = level - interval;
+        /**************************************************************************/      
+        /* loop conditon */
+        
+        if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+          {
+            continue;
+          }
+        
+        /* loop conditon */
+        /**************************************************************************/
+
+
+        for(int jj=0; jj<NoC; jj++) {
+          unsigned long long int pointer_offset = sizeof(int*)*max_numpart;
+          
+          ax_array[L][jj] = (int *)pointer_ax;
+          pointer_ax += pointer_offset;
+          
+          ay_array[L][jj] = (int *)pointer_ay;
+          pointer_ay += pointer_offset;
+          
+          Ix_array[L][jj] = (int **)pointer_Ix;
+          pointer_Ix += pointer_offset;
+          
+          Iy_array[L][jj] = (int **)pointer_Iy;
+          pointer_Iy += pointer_offset;
+        }
+      }
+      
+      /* add parts */
+      if(NoP>0)
+        {
+          /* arrays to store temporary loop variables */
+          int tmp_array_size = 0;
+          for(int level=interval; level<L_MAX; level++) {
+            /**************************************************************************/      
+            /* loop conditon */
             
-          /* add offset */
-          //memcpy_s(SCORE,RL_S,rootmatch[jj],RL_S);
-          memcpy(SCORE, rootmatch[level][jj], RL_S);
-          FLOAT *SC_S = SCORE;
-          FLOAT *SC_E = SCORE+RL;
-          while(SC_S<SC_E) *(SC_S++)+=OFF;
-          
-          /* root matching size */
-          int R_S[2]={rm_size_array[level][jj*2], rm_size_array[level][jj*2+1]};
-          int SNJ =sizeof(int*)*numpart[jj];
-          
-          
-          /* anchor matrix */
-          int *ax = (int*)malloc(SNJ);
-          int *ay = (int*)malloc(SNJ);
-          
-          /* boudary index */
-          int **Ix =(int**)malloc(SNJ);
-          int **Iy =(int**)malloc(SNJ);
-          
+            if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+              {
+                continue;
+              }
+            
+            /* loop conditon */
+            /**************************************************************************/
+            
+            for(int jj=0; jj<NoC; jj++) {
+              tmp_array_size += max_numpart*sizeof(int);
+            }
+          }
 
-          /* add parts */
-          if(NoP>0)
-            {			
+          int ***DIDX_array = (int ***)malloc((L_MAX-interval)*sizeof(int**));
+          int **sub_dst_DIDX = (int **)malloc(NoC*(L_MAX-interval)*sizeof(int*));
+          int *dst_DIDX = (int *)malloc(tmp_array_size);
+
+
+          int ***DID_4_array = (int ***)malloc((L_MAX-interval)*sizeof(int **));
+          int **sub_dst_DID_4 = (int **)malloc(NoC*(L_MAX-interval)*sizeof(int*));
+          int *dst_DID_4;
+          res = cuMemHostAlloc((void **)&dst_DID_4, tmp_array_size, CU_MEMHOSTALLOC_DEVICEMAP);
+          if(res != CUDA_SUCCESS) {
+            printf("cuMemHostAlloc(dst_DID_4) failed: res = %s\n", conv(res));
+            exit(1);
+          }
+          
+          
+          int ***PIDX_array = (int ***)malloc((L_MAX-interval)*sizeof(int **));
+          int **sub_dst_PIDX = (int **)malloc(NoC*(L_MAX-interval)*sizeof(int*));
+          int *dst_PIDX;
+          res = cuMemHostAlloc((void **)&dst_PIDX, tmp_array_size, CU_MEMHOSTALLOC_DEVICEMAP);
+          if(res != CUDA_SUCCESS) {
+            printf("cuMemHostAlloc(dst_PIDX) failed: res = %s\n", conv(res));
+            exit(1);
+          }
+
+          /* distribute consolidated region */          
+          unsigned long long int pointer_DIDX = (unsigned long long int)sub_dst_DIDX;
+          unsigned long long int pointer_DID_4 = (unsigned long long int)sub_dst_DID_4;
+          unsigned long long int pointer_PIDX = (unsigned long long int)sub_dst_PIDX;
+          for(int level=interval; level<L_MAX; level++) {
+            int L = level - interval;
+
+            /**************************************************************************/      
+            /* loop conditon */
+            
+            if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+              {
+                continue;
+              }
+            
+            /* loop conditon */
+            /**************************************************************************/
+
+
+            DIDX_array[L] = (int **)pointer_DIDX;
+            pointer_DIDX += (unsigned long long int)(NoC*sizeof(int*));
+
+            DID_4_array[L] = (int **)pointer_DID_4;
+            pointer_DID_4 += (unsigned long long int)(NoC*sizeof(int*));
+
+            PIDX_array[L] = (int **)pointer_PIDX;
+            pointer_PIDX += (unsigned long long int)(NoC*sizeof(int*));
+          }
+
+          pointer_DIDX = (unsigned long long int)dst_DIDX;
+          pointer_DID_4 = (unsigned long long int)dst_DID_4;
+          pointer_PIDX = (unsigned long long int)dst_PIDX;
+          for(int level=interval; level<L_MAX; level++) {
+            int L = level - interval;
+            /**************************************************************************/      
+            /* loop conditon */
+            
+            if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+              {
+                continue;
+              }
+            
+            /* loop conditon */
+            /**************************************************************************/
+            
+            
+            for(int jj=0; jj<NoC; jj++) {
+              unsigned long long int pointer_offset = (unsigned long long int)(max_numpart*sizeof(int));
               
+              DIDX_array[L][jj] = (int *)pointer_DIDX;
+              pointer_DIDX += pointer_offset;
+              
+              DID_4_array[L][jj] = (int *)pointer_DID_4;
+              pointer_DID_4 += pointer_offset;
+              
+              PIDX_array[L][jj] = (int *)pointer_PIDX;
+              pointer_PIDX += pointer_offset;
+            }
+          }
+
+          
+          /* prepare for parallel execution */
+          int sum_size_index_matrix = 0;
+          for(int level=interval; level<L_MAX; level++) {          
+            int L = level - interval;
+            /**************************************************************************/      
+            /* loop conditon */
+            
+            if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+              {
+                continue;
+              }
+            
+            /* loop conditon */
+            /**************************************************************************/
+            
+            
+            for(int jj=0; jj<NoC; jj++) {
               for (int kk=0;kk<numpart[jj];kk++)
                 {
-                  int DIDX = MO->MI->didx[jj][kk];
-                  int DID_4 = DIDX*4;
-                  int PIDX = MO->MI->pidx[jj][kk];
+                  /* assign values to each element */
+                  DIDX_array[L][jj][kk] = MO->MI->didx[jj][kk];
+                  DID_4_array[L][jj][kk] = DIDX_array[L][jj][kk]*4;
+                  PIDX_array[L][jj][kk] = MO->MI->pidx[jj][kk];
                   
                   /* anchor */
-                  ax[kk] = MO->MI->anchor[DIDX*2]+1;
-                  ay[kk] = MO->MI->anchor[DIDX*2+1]+1;
+                  ax_array[L][jj][kk] = MO->MI->anchor[DIDX_array[L][jj][kk]*2]+1;
+                  ay_array[L][jj][kk] = MO->MI->anchor[DIDX_array[L][jj][kk]*2+1]+1;
+
+                  int PSSIZE[2] ={pm_size_array[L][PIDX_array[L][jj][kk]*2], pm_size_array[L][PIDX_array[L][jj][kk]*2+1]}; // Cのサイズ
                   
-                  /* set part-match */
-                  FLOAT *match = partmatch[L][PIDX];
-                  
-                  /* size of part-matching */
-                  int PSSIZE[2] ={pm_size_array[L][PIDX*2], pm_size_array[L][PIDX*2+1]}; // Cのサイズ
-                  
-                  FLOAT *Q = match;
-                  for(int ss=0;ss<PSSIZE[0]*PSSIZE[1];ss++) *(Q++)*=-1;
                   
                   /* index matrix */
-                  Ix[kk] =(int*)malloc(sizeof(int)*PSSIZE[0]*PSSIZE[1]);
-                  Iy[kk] =(int*)malloc(sizeof(int)*PSSIZE[0]*PSSIZE[1]);
+                  sum_size_index_matrix += sizeof(int)*PSSIZE[0]*PSSIZE[1];
                   
-                  /* decide position of part for all pixels */
-                  /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-                  /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-                  /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-                  /* here is dt part(time consumer) */
-                  gettimeofday(&tv_dt_start, NULL);
-                  //FLOAT *M = dt(match, MO->MI->def[DID_4], MO->MI->def[DID_4+1], MO->MI->def[DID_4+2], MO->MI->def[DID_4+3], PSSIZE, Ix[kk], Iy[kk]);
-                  FLOAT *M = dt_GPU(match, MO->MI->def[DID_4], MO->MI->def[DID_4+1], MO->MI->def[DID_4+2], MO->MI->def[DID_4+3], PSSIZE, Ix[kk], Iy[kk]);
-                  gettimeofday(&tv_dt_end, NULL);
-                  tvsub(&tv_dt_end, &tv_dt_start, &tv);
-                  time_dt += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-                  /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-                  /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-                  /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-
-                  /* add part score */
-                  add_part_calculation(SCORE, M, R_S, PSSIZE, ax[kk], ay[kk]); 
-                  
-                  s_free(M);
                 }
             }
+          }
+          
+          int *dst_Ix_kk = (int *)malloc(sum_size_index_matrix);
+          int *dst_Iy_kk = (int *)malloc(sum_size_index_matrix);
+          unsigned long long int pointer_Ix_kk = (unsigned long long int)dst_Ix_kk;
+          unsigned long long int pointer_Iy_kk = (unsigned long long int)dst_Iy_kk;
+          for(int level=interval; level<L_MAX; level++) {
+            int L = level - interval;
+
+            /**************************************************************************/      
+            /* loop conditon */
+            
+            if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+              {
+                continue;
+              }
+      
+            /* loop conditon */
+            /**************************************************************************/
+
+            for(int jj=0; jj<NoC; jj++) {
+              for (int kk=0;kk<numpart[jj];kk++)
+                {
+                  int PSSIZE[2] ={pm_size_array[L][PIDX_array[L][jj][kk]*2], pm_size_array[L][PIDX_array[L][jj][kk]*2+1]}; // Cのサイズ
+                  
+                  Ix_array[L][jj][kk] = (int *)pointer_Ix_kk;
+                  Iy_array[L][jj][kk] = (int *)pointer_Iy_kk;
+                  
+                  pointer_Ix_kk += (unsigned long long int)(sizeof(int)*PSSIZE[0]*PSSIZE[1]);
+                  pointer_Iy_kk += (unsigned long long int)(sizeof(int)*PSSIZE[0]*PSSIZE[1]);
+                }
+            }
+            
+          }
+
+
+          /* allocate GPU memory and upload PIDX_array to GPU */
+          res = cuMemAlloc(&PIDX_array_dev, tmp_array_size);
+          if(res != CUDA_SUCCESS) {
+            printf("cuMemAlloc(PIDX_array_dev) failed: res = %s\n", conv(res));
+            exit(1);
+          }
+          
+          gettimeofday(&tv_memcpy_start, NULL);
+          res = cuMemcpyHtoD(PIDX_array_dev, dst_PIDX, tmp_array_size);
+          if(res != CUDA_SUCCESS) {
+            printf("cuMemcpyHtoD(PIDX_array) failed: res = %s\n", conv(res));
+            exit(1);
+          }
+          gettimeofday(&tv_memcpy_end, NULL);
+          tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+          time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
           
-          /* get all good matches */
-          int GMN;
-          int *GMPC = get_gmpc(SCORE,thresh,R_S,&GMN);
-          int RSIZE[2]={MO->MI->rsize[jj*2],MO->MI->rsize[jj*2+1]};
           
-          int GL = (numpart[jj]+1)*4+3;  //31
+          res = cuMemAlloc(&DID_4_array_dev, tmp_array_size);
+          if(res != CUDA_SUCCESS) {
+            printf("cuMemAlloc(DID_4__array_dev) failed: res = %s\n", conv(res));
+            exit(1);
+          }
+          
+          gettimeofday(&tv_memcpy_start, NULL);
+          res = cuMemcpyHtoD(DID_4_array_dev, dst_DID_4, tmp_array_size);
+          if(res != CUDA_SUCCESS) {
+            printf("cuMemcpyHtoD(DID_4__array) failed: res = %s\n", conv(res));
+            exit(1);
+          }
+          gettimeofday(&tv_memcpy_end, NULL);
+          tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+          time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+
+          
+          gettimeofday(&tv_dt_start, NULL);
+          FLOAT ****M_array = dt_GPU(                     
+                                    Ix_array,      // int ****Ix_array
+                                    Iy_array,      // int ****Iy_array
+                                    PIDX_array,    // int ***PIDX_array
+                                    pm_size_array, // int **size_array
+                                    NoP,           // int NoP
+                                    numpart,       // int *numpart
+                                    NoC,           // int NoC
+                                    interval,      // int interval
+                                    L_MAX,         // int L_MAX
+                                    FSIZE,         // int *FSIZE,
+                                    padx,          // int padx,
+                                    pady,          // int pady,
+                                    MO->MI->max_X, // int max_X
+                                    MO->MI->max_Y  // int max_Y
+                                                         );
+          gettimeofday(&tv_dt_end, NULL);
+          tvsub(&tv_dt_end, &tv_dt_start, &tv);
+          time_dt += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+          
+          
+          
+          /* add part score */
+          for(int level=interval; level<L_MAX; level++){
+            int L = level - interval;          
+            /**************************************************************************/      
+            /* loop conditon */
+            
+            if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+              {
+                continue;
+              }
+            
+            /* loop conditon */
+            /**************************************************************************/
+          
+  
+            for(int jj=0; jj<NoC; jj++) {
+              for(int kk=0; kk<numpart[jj]; kk++) {
+                int PSSIZE[2] ={pm_size_array[L][PIDX_array[L][jj][kk]*2], pm_size_array[L][PIDX_array[L][jj][kk]*2+1]}; // Cのサイズ
+                int R_S[2]={rm_size_array[level][jj*2], rm_size_array[level][jj*2+1]};
+                
+                add_part_calculation(SCORE_array[L][jj], M_array[L][jj][kk], R_S, PSSIZE, ax_array[L][jj][kk], ay_array[L][jj][kk]); 
+                
+              }
+            }
+          }
+          
+          s_free(M_array[0][0][0]);
+          s_free(M_array[0][0]);
+          s_free(M_array[0]);
+          s_free(M_array);
+          
+          
+          /* free temporary arrays */
+          free(dst_DIDX);
+          free(sub_dst_DIDX);
+          free(DIDX_array);
+          
+          
+          res = cuMemFreeHost(dst_DID_4);
+          if(res != CUDA_SUCCESS) {
+            printf("cuMemFreeHost(dst_DID_4) failed: res = %s\n", conv(res));
+            exit(1);
+          }
+          free(sub_dst_DID_4);
+          free(DID_4_array);
+
+          
+          res = cuMemFreeHost(dst_PIDX);
+          if(res != CUDA_SUCCESS) {
+            printf("cuMemFreeHost(dst_PIDX) failed: res = %s\n", conv(res));
+            exit(1);
+          }
+          free(sub_dst_PIDX);
+          free(PIDX_array);
+
+          
+          /* free GPU memory */
+          res = cuMemFree(DID_4_array_dev);
+          if(res != CUDA_SUCCESS) {
+            printf("cuMemFree(DID_4_array_dev) failed: res = %s\n", conv(res));
+            exit(1);
+          }
+          
+          res = cuMemFree(PIDX_array_dev);
+          if(res != CUDA_SUCCESS) {
+            printf("cuMemFree(PIDX_array_dev) failed: res = %s\n", conv(res));
+            exit(1);
+          }
+          
+          
+        } // start from if(NoP>0)
+      
+      
+
+      ////nucom
+      /* combine root and part score and detect boundary box for each-component */
+      
+      FLOAT *scale_array = (FLOAT *)malloc((L_MAX-interval)*sizeof(FLOAT));
+      for(int level=interval; level<L_MAX; level++) {
+        int L = level - interval;
+        /**************************************************************************/      
+        /* loop conditon */
+        
+        if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+          {
+            Tboxes[count]=NULL;
+            count++;
+            continue;
+          }
+        
+        /* loop conditon */
+        /**************************************************************************/
+        
+        scale_array[L] = (FLOAT)sbin/scales[level];
+
+      }
+          
+
+      for (int level=interval; level<L_MAX; level++)  // feature's loop(A's loop) 1level 1picture
+        {
+          /* parameters (related for level) */
+          int L=level-interval;
+          /* matched score size matrix */
+          FLOAT scale=(FLOAT)sbin/scales[level];
+          
+          /**************************************************************************/      
+          /* loop conditon */
+          
+          if(FSIZE[level*2]+2*pady<MO->MI->max_Y ||(FSIZE[level*2+1]+2*padx<MO->MI->max_X))
+            {
+              Tboxes[count]=NULL;
+              count++;
+              continue;
+            }
+          
+          /* loop conditon */
+          /**************************************************************************/
+          
+          
+          
           
           /* calculate accumulated score */
-          /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-          /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-          /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-          /* here is calc_score part(time consumer) */
-          gettimeofday(&tv_calc_score_start, NULL);
-
-          //calc_a_score(A_SCORE, SCORE, R_S, RSIZE, MO->MI, scale);
-          calc_a_score_GPU(A_SCORE, SCORE, R_S, RSIZE, MO->MI, scale, RL_S);
-
-          gettimeofday(&tv_calc_score_end, NULL);
-          tvsub(&tv_calc_score_end, &tv_calc_score_start, &tv);
-          time_calc_score += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-          /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-          /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-          /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
-
+          gettimeofday(&tv_calc_a_score_start, NULL);
           
-          /* detected box coordinate(current level) */
-          FLOAT *t_boxes = (FLOAT*)calloc(GMN*GL,sizeof(FLOAT));
+          calc_a_score_GPU(
+                           A_SCORE,              // FLOAT *ac_score
+                           SCORE_array[L],       // FLOAT **score
+                           rm_size_array[level], // int *ssize_start
+                           MO->MI,               // Model_info *MI
+                           scale,                // FLOAT scale
+                           RL_S_array[L],        // int *size_score_array
+                           NoC                   // int NoC
+                           );
           
-          gettimeofday(&tv_box_start, NULL);
-
-          for(int kk=0;kk<GMN;kk++)
+          gettimeofday(&tv_calc_a_score_end, NULL);
+          tvsub(&tv_calc_a_score_end, &tv_calc_a_score_start, &tv);
+          time_calc_a_score += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+          
+          
+          for(int jj=0;jj<NoC;jj++)
             {
-              FLOAT *P_temp = t_boxes+GL*kk;
-              int y = GMPC[2*kk];
-              int x = GMPC[2*kk+1];
               
-              /* calculate root box coordinate */
-              FLOAT *RB =rootbox(x,y,scale,padx,pady,RSIZE);
-              memcpy(P_temp, RB,sizeof(FLOAT)*4);
-              s_free(RB);
-              P_temp+=4;
+              int R_S[2]={rm_size_array[level][jj*2], rm_size_array[level][jj*2+1]};
               
-              for(int pp=0;pp<numpart[jj];pp++)
+              /* get all good matches */
+              int GMN;
+              int *GMPC = get_gmpc(SCORE_array[L][jj],thresh,R_S,&GMN);
+              int RSIZE[2]={MO->MI->rsize[jj*2], MO->MI->rsize[jj*2+1]};
+              
+              int GL = (numpart[jj]+1)*4+3;  //31
+
+
+              /* detected box coordinate(current level) */
+              FLOAT *t_boxes = (FLOAT*)calloc(GMN*GL,sizeof(FLOAT));
+              
+              gettimeofday(&tv_box_start, NULL);
+              
+              ////////////////////////////////////////////////////////////////////////////////////
+              ////////////////////////////////////////////////////////////////////////////////////
+              ///////////////////////////// NO NEED TO USE GPU ///////////////////////////////////
+              ////////////////////////////////////////////////////////////////////////////////////
+              for(int kk=0;kk<GMN;kk++)
                 {
-                  int PBSIZE[2]={psize[jj][pp*2],psize[jj][pp*2+1]};
-                  int Isize[2]={pm_size_array[L][MO->MI->pidx[jj][pp]*2], pm_size_array[L][MO->MI->pidx[jj][pp]*2+1]};
+                  FLOAT *P_temp = t_boxes+GL*kk;
+                  int y = GMPC[2*kk];
+                  int x = GMPC[2*kk+1];
                   
-                  /* calculate part box coordinate */
-                  FLOAT *PB = partbox(x,y,ax[pp],ay[pp],scale,padx,pady,PBSIZE,Ix[pp],Iy[pp],Isize);
-                  memcpy(P_temp, PB,sizeof(FLOAT)*4);
+                  /* calculate root box coordinate */
+                  FLOAT *RB =rootbox(x,y,scale,padx,pady,RSIZE);
+                  memcpy(P_temp, RB,sizeof(FLOAT)*4);
+                  s_free(RB);
                   P_temp+=4;
-                  s_free(PB);
+                  
+                  for(int pp=0;pp<numpart[jj];pp++)
+                    {
+                      int PBSIZE[2]={psize[jj][pp*2], psize[jj][pp*2+1]};
+                      int Isize[2]={pm_size_array[L][MO->MI->pidx[jj][pp]*2], pm_size_array[L][MO->MI->pidx[jj][pp]*2+1]};
+                      
+                      /* calculate part box coordinate */
+                      FLOAT *PB = partbox(x,y,ax_array[L][jj][pp],ay_array[L][jj][pp],scale,padx,pady,PBSIZE,Ix_array[L][jj][pp],Iy_array[L][jj][pp],Isize);
+                      memcpy(P_temp, PB,sizeof(FLOAT)*4);
+                      P_temp+=4;
+                      s_free(PB);
+                    }
+                  /* component number and score */
+                  *(P_temp++)=(FLOAT)jj; //component number 
+                  *(P_temp++)=SCORE_array[L][jj][x*R_S[0]+y]; //score of good match
+                  *P_temp = scale;
                 }
-              /* component number and score */
-              *(P_temp++)=(FLOAT)jj;					//component number 
-              *(P_temp++)=SCORE[x*R_S[0]+y];			//score of good match
-              *P_temp = scale;
+              ////////////////////////////////////////////////////////////////////////////////////
+              ///////////////////////////// NO NEED TO USE GPU ///////////////////////////////////
+              ////////////////////////////////////////////////////////////////////////////////////
+              ////////////////////////////////////////////////////////////////////////////////////
+              
+              gettimeofday(&tv_box_end, NULL);
+              tvsub(&tv_box_end, &tv_box_start, &tv);
+              time_box += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+              
+              
+              
+              
+              
+              /* save box information */
+              if(GMN>0) Tboxes[count]=t_boxes;
+              else Tboxes[count]=NULL;
+              b_nums[count]=GMN;
+              count++;
+              D_NUMS+=GMN;			//number of detected box 
+              
+              /* release */
+              s_free(GMPC);
+              
             }
-
-          gettimeofday(&tv_box_end, NULL);
-          tvsub(&tv_box_end, &tv_box_start, &tv);
-          time_box += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-
-
-
-
-          
-          /* save box information */
-          if(GMN>0) Tboxes[count]=t_boxes;
-          else Tboxes[count]=NULL;
-          b_nums[count]=GMN;
-          count++;
-          D_NUMS+=GMN;			//number of detected box 
-          
-          /* release */
-          s_free(GMPC);
-          s_free(SCORE);
-          s_free(ax);
-          s_free(ay);
-          for(int ss=0;ss<numpart[jj];ss++)
-            {
-              s_free(Ix[ss]);
-              s_free(Iy[ss]);
-            }
-          s_free(Ix);		
-          s_free(Iy);
-          
+          ////numcom
+         
         }
-      ////numcom
-      
-    }
-  ////level
-#else
-#if 0
-  nucom_GPU(interval, L_MAX, sbin, scales, FSIZE, pady, MO, padx, Tboxes, NoC, rm_size_array, pm_size_array, rootmatch, partmatch, numpart, NoP, thresh, A_SCORE, psize, b_nums, &D_NUMS);
-#endif
-#endif  
+      ////level
+
+          /* free temporary arrays */
+          free(dst_RL);
+          free(RL_array);
+          
+          free(dst_RI);
+          free(RI_array);
+          
+          free(dst_OI);
+          free(OI_array);
+          
+          free(dst_RL_S);
+          free(RL_S_array);
+          
+          free(dst_OFF);
+          free(OFF_array);
+          
+          free(dst_SCORE);
+          free(sub_dst_SCORE);
+          free(SCORE_array);
+          
+          free(dst_ax);
+          free(sub_dst_ax);
+          free(ax_array);
+          
+          free(dst_ay);
+          free(sub_dst_ay);
+          free(ay_array);
+          
+          free(Ix_array[0][0][0]);
+          free(dst_Ix);
+          free(sub_dst_Ix);
+          free(Ix_array);
+          
+          free(Iy_array[0][0][0]);
+          free(dst_Iy);
+          free(sub_dst_Iy);
+          free(Iy_array);
+
+
+          free(scale_array);
+ 
+ 
+
+
 
   gettimeofday(&tv_nucom_end, NULL);
 
 #if 1
-  tvsub(&tv_make_c_end, &tv_make_c_start, &tv);
-  make_c = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+  // tvsub(&tv_make_c_end, &tv_make_c_start, &tv);
+  // make_c = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
-  tvsub(&tv_nucom_end, &tv_nucom_start, &tv);
-  nucom = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+  // tvsub(&tv_nucom_end, &tv_nucom_start, &tv);
+  // nucom = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
-  printf("\n");
-  printf("make_c     : %f\n", make_c);
-  printf("nucom      : %f\n", nucom);
-  printf("----- breakdown of nucom -----\n");
-  printf("time_dt    : %f\n", time_dt);
-  printf("calc_a_score : %f\n", time_calc_score);
-  //  printf("time box   : %f\n", time_box);
-  printf("------------------------------\n");
-  printf("\n");
+  // printf("\n============================================\n");
+  // printf("-- printed by get_boxex.cpp ----------------\n");
+  // printf("make_c     : %f\n", make_c);
+  // printf("nucom      : %f\n", nucom);
+  // printf("----- breakdown of nucom -----\n");
+  // printf("time_dt    : %f\n", time_dt);
+  // printf("calc_a_score : %f\n", time_calc_score);
+  // //printf("time box   : %f\n", time_box);
+  // printf("------------------------------\n");
+  // printf("============================================\n");
+  // printf("\n");
+  
+  printf("root SCORE : %f\n", time_root_score);
+  printf("part SCORE : %f\n", time_part_score);
+  printf("dt  : %f\n", time_dt);
+  printf("calc_a_score : %f\n", time_calc_a_score);
+  
+
 #endif
   
+  /* free GPU memory */
+  res = cuMemFree(root_C_dev);
+  if(res != CUDA_SUCCESS){
+    printf("cuMemFree(root_C_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemFree(part_C_dev);
+  if(res != CUDA_SUCCESS){
+    printf("cuMemFree(part_C_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemFree(pm_size_array_dev);
+  if(res != CUDA_SUCCESS){
+    printf("cuMemFree(pm_size_array_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemFree(root_error_array_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(root_error_array_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemFree(part_error_array_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(part_error_array_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemFree(def_array_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(def_array_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemFree(numpart_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(numpart_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
   /* free memory regions */
   res = cuMemFreeHost((void *)featp2[0]);
   if(res != CUDA_SUCCESS) {
@@ -975,16 +1791,12 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
   s_free(new_PADsize);
   
   
-  
   /* release */
   s_free(rm_size_array[0]);
   s_free(rm_size_array);
   s_free(pm_size_array[0]);
   s_free(pm_size_array);
   
-
-
-
 
 
   /* Output boundary-box coorinate information */
@@ -1037,8 +1849,7 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
   
   /* output result */
   *Dnum=D_NUMS;
-  
-  
+
   return(boxes);
 }
 
