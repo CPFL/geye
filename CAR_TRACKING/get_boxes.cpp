@@ -458,17 +458,17 @@ void calc_a_score_GPU(
   int thread_num_x, thread_num_y;
   int block_num_x, block_num_y;
 
-  res = cuDeviceGetAttribute(&max_threads_num, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, dev);
+  res = cuDeviceGetAttribute(&max_threads_num, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, dev[0]);
   if(res != CUDA_SUCCESS){
     printf("\ncuDeviceGetAttribute() failed: res = %s\n", conv(res));
     exit(1);
   }
   
-  NR_MAXTHREADS_X = (int)sqrt((double)max_threads_num/NoC);
-  NR_MAXTHREADS_Y = (int)sqrt((double)max_threads_num/NoC);
+  NR_MAXTHREADS_X[0] = (int)sqrt((double)max_threads_num/NoC);
+  NR_MAXTHREADS_Y[0] = (int)sqrt((double)max_threads_num/NoC);
   
-  thread_num_x = (IWID < NR_MAXTHREADS_X) ? IWID : NR_MAXTHREADS_X;
-  thread_num_y = (IHEI < NR_MAXTHREADS_Y) ? IHEI : NR_MAXTHREADS_Y;
+  thread_num_x = (IWID < NR_MAXTHREADS_X[0]) ? IWID : NR_MAXTHREADS_X[0];
+  thread_num_y = (IHEI < NR_MAXTHREADS_Y[0]) ? IHEI : NR_MAXTHREADS_Y[0];
   
   block_num_x = IWID / thread_num_x;
   block_num_y = IHEI / thread_num_y;
@@ -478,7 +478,7 @@ void calc_a_score_GPU(
   gettimeofday(&tv_kernel_start, NULL);
   /* launch GPU kernel */
   res = cuLaunchKernel(
-                       func_calc_a_score, // call function
+                       func_calc_a_score[0], // call function
                        block_num_x,       // gridDimX
                        block_num_y,       // gridDimY
                        1,                 // gridDimZ
@@ -772,37 +772,58 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
 
 
   /* allocate GPU memory and transfer feat, new_PADsize to GPU  */
-  CUdeviceptr featp2_dev, new_PADsize_dev;
-  res = cuMemAlloc(&featp2_dev, SUM_SIZE_feat);
+  CUdeviceptr *featp2_dev, *new_PADsize_dev;
+
+
+  featp2_dev = (CUdeviceptr*)malloc(device_num*sizeof(CUdeviceptr));
+  new_PADsize_dev = (CUdeviceptr*)malloc(device_num*sizeof(CUdeviceptr));
+
+
+  for(int i = 0; i < device_num; i++){
+
+  res = cuCtxSetCurrent(ctx[i]);
+  if(res != CUDA_SUCCESS) {
+    printf("cuCtxSetCurrent(ctx[%d]) failed: res = %s\n", i, conv(res));
+    exit(1);
+  }
+
+  res = cuMemAlloc(&featp2_dev[i], SUM_SIZE_feat);
   if(res != CUDA_SUCCESS) {
     printf("cuMemAlloc(featp2_dev) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-  res = cuMemAlloc(&new_PADsize_dev, L_MAX*3*sizeof(int));
+  res = cuMemAlloc(&new_PADsize_dev[i], L_MAX*3*sizeof(int));
   if(res != CUDA_SUCCESS) {
     printf("cuMemAlloc(new_PADsize_dev) failed: res = %s\n", conv(res));
     exit(1);
   }
 
   gettimeofday(&tv_memcpy_start, NULL);
-  res = cuMemcpyHtoD(featp2_dev, featp2[0], SUM_SIZE_feat);
+  res = cuMemcpyHtoD(featp2_dev[i], featp2[0], SUM_SIZE_feat);
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyHtoD(featp2) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-  res = cuMemcpyHtoD(new_PADsize_dev, new_PADsize, L_MAX*3*sizeof(int));
+  res = cuMemcpyHtoD(new_PADsize_dev[i], new_PADsize, L_MAX*3*sizeof(int));
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyHtoD(new_PADsize) failed: res = %s\n", conv(res));
     exit(1);
   }
+
   gettimeofday(&tv_memcpy_end, NULL);
   tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
   time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
+  }  
 
 
+  res = cuCtxSetCurrent(ctx[0]);
+  if(res != CUDA_SUCCESS) {
+    printf("cuCtxSetCurrent(ctx[0]) failed: res = %s\n", conv(res));
+    exit(1);
+  }
 
 
   ///////root calculation/////////
@@ -863,20 +884,41 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
     }
   
 
-  
+  /* free GPU memory for feat, new_PADsize  */   
 
-  /* free GPU memory for feat, new_PADsize  */      
-  res = cuMemFree(featp2_dev);
+  for(int i = 0; i < device_num; i++){
+
+  res = cuCtxSetCurrent(ctx[i]);
+  if(res != CUDA_SUCCESS) {
+    printf("cuCtxSetCurrent(ctx[%d]) failed: res = %s\n", i, conv(res));
+    exit(1);
+  }
+
+   
+  res = cuMemFree(featp2_dev[i]);
   if(res != CUDA_SUCCESS) {
     printf("cuMemFree(featp2_dev) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-  res = cuMemFree(new_PADsize_dev);
+  res = cuMemFree(new_PADsize_dev[i]);
   if(res != CUDA_SUCCESS) {
     printf("cuMemFree(new_PADsize_dev) failed: res = %s\n", conv(res));
     exit(1);
   }
+
+  }
+
+  free(featp2_dev);
+  free(new_PADsize_dev);    
+
+
+  res = cuCtxSetCurrent(ctx[0]);
+  if(res != CUDA_SUCCESS) {
+    printf("cuCtxSetCurrent(ctx[0]) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
 
   gettimeofday(&tv_make_c_end, NULL);
 
@@ -884,8 +926,6 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
     
   count = 0;
   D_NUMS = 0;
-
-
 
   /* prepare for paralell execution of nucom */  
   res = cuMemAlloc(&pm_size_array_dev, NoP*2*L_MAX*sizeof(int));
@@ -1400,7 +1440,6 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
           gettimeofday(&tv_memcpy_end, NULL);
           tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
           time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-
           
           gettimeofday(&tv_dt_start, NULL);
           FLOAT ****M_array = dt_GPU(                     

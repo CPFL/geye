@@ -24,24 +24,36 @@ process_root(
  int interval, 
  int L_MAX,
  int *error_array,
- int error_array_num
+ int error_array_num,
+ int pid,
+ int device_number
 ) 
 {
   int idx_x = blockIdx.x * blockDim.x + threadIdx.x;
   int idx_y = blockIdx.y * blockDim.y + threadIdx.y;
-  // int ii = threadIdx.z;
-  // int level = blockIdx.z; 
   int ii = blockIdx.z % len;
   int level = blockIdx.z / len;
 
-  
   int A_dims[3] = { A_dims_array[level*3], A_dims_array[level*3+1], A_dims_array[level*3+2] };
   int B_dims[3] = { B_dims_array[ii*3], B_dims_array[ii*3+1], B_dims_array[ii*3+2] };
   int C_dims[2] = { A_dims[0] - B_dims[0] + 1, A_dims[1] - B_dims[1] + 1 };
   
+  int C_x = C_dims[1]/device_number;
   
-  if(0 <= ii && ii < len && 0 <= idx_x && idx_x < C_dims[1] && 0 <= idx_y && idx_y < C_dims[0] && interval <= level && level < L_MAX ) {    
-    
+  if(C_dims[1]%device_number != 0){
+    C_x++;
+  }  
+ 
+  idx_x = idx_x + pid * C_x;
+ 
+  if(idx_x < C_x * pid  ||  idx_x >=  C_x * (pid + 1)){
+    return ;
+  }  
+
+
+  if(0 <= ii && ii < len && 0 <= idx_x && idx_x < C_dims[1] && 0 <= idx_y && idx_y < C_dims[0] && interval <= level && level < L_MAX ) { 
+
+
     int num_features = A_dims[2];
     const int A_SQ = A_dims[0]*A_dims[1];
     const int B_SQ = B_dims[0]*B_dims[1];
@@ -151,7 +163,7 @@ process_root(
         // }
         //}
       }
-
+ 
     *(dst + (idx_x*C_dims[0] + idx_y)) += add_val;
 
   }
@@ -178,7 +190,9 @@ process_part(
  int interval, 
  int L_MAX,
  int *error_array,
- int error_array_num
+ int error_array_num,
+ int pid,
+ int device_number
 ) 
 {
 
@@ -194,6 +208,17 @@ process_part(
   int B_dims[3] = { B_dims_array[ii*3], B_dims_array[ii*3+1], B_dims_array[ii*3+2] };
   int C_dims[2] = { A_dims[0] - B_dims[0] + 1, A_dims[1] - B_dims[1] + 1 };
 
+  int C_x = C_dims[1]/device_number;
+
+  if(C_dims[1]%device_number != 0){
+    C_x++;
+  }  
+ 
+  idx_x = idx_x + pid * C_x;
+ 
+  if(idx_x < C_x * pid  ||  idx_x >=  C_x * (pid + 1)){
+    return ;
+  }  
 
   if(0 <= ii && ii < len && 0 <= idx_x && idx_x < C_dims[1] && 0 <= idx_y && idx_y < C_dims[0] && 0 <= level && level < (L_MAX - interval) ) {
 
@@ -301,10 +326,9 @@ process_part(
         //}
       }
 
-
     *(dst + (idx_x*C_dims[0] + idx_y)) += add_val;
 
-  }
+}
   
   return;
 }
@@ -335,16 +359,15 @@ inverse_Q(
   int jj = threadIdx.z;
   int L = blockIdx.z;
 
-
   if(0<=L && L < (L_MAX-interval)) 
-    {
+    {  
       /* loop condition */
       for(int h=0; h<error_array_num; h++) {
         if(L==error_array[h]){ 
           return;
         }
       }
-      
+    
       if(0<=jj && jj<NoC) 
         {
           int numpart_jj = numpart[jj];
@@ -370,6 +393,7 @@ inverse_Q(
                 if(error_flag != 0) {
                   continue;    
                 }
+
                 
                 for(int j=0; j<NoP; j++) {
                   int height = size_array[i*NoP*2 + j*2];
@@ -379,7 +403,7 @@ inverse_Q(
                 }
               }
               
-              
+   
               
               for(int j=0; j<PIDX; j++) {
                 int height = size_array[L*NoP*2 + j*2];
@@ -395,7 +419,7 @@ inverse_Q(
             }
         }
     }
-  
+        
 }
 
 

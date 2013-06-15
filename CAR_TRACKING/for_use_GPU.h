@@ -102,11 +102,11 @@ struct thread_data {
         
 /* define variables for using GPU */
 
-extern CUdevice dev, dev2;
-extern CUcontext ctx, ctx2;
-extern CUfunction func_process_root, func_process_part, func_dt1d_x, func_dt1d_y, func_calc_a_score, func_inverse_Q;
-extern CUmodule module;
-extern int NR_MAXTHREADS_X, NR_MAXTHREADS_Y;
+extern CUdevice *dev;
+extern CUcontext *ctx;
+extern CUfunction *func_process_root, *func_process_part, *func_dt1d_x, *func_dt1d_y, *func_calc_a_score, *func_inverse_Q;
+extern CUmodule *module;
+extern int *NR_MAXTHREADS_X, *NR_MAXTHREADS_Y;
 
 extern  CUdeviceptr root_C_dev, part_C_dev;
 extern CUdeviceptr root_error_array_dev, part_error_array_dev;
@@ -119,6 +119,7 @@ extern CUdeviceptr DID_4_array_dev;
 extern CUdeviceptr numpart_dev;
 extern int max_numpart;
 extern int max_RL_S;
+extern int device_num;
 
 /* functions for using GPU and to calculate on GPU */
 extern void init_cuda(void);
@@ -131,13 +132,13 @@ extern char *conv(unsigned int res);
 /* function for GPU execution correspond to fconvsMT */
 extern 
 FLOAT ***fconvsMT_GPU(
-    CUdeviceptr featp2_dev, 
+    CUdeviceptr *featp2_dev, 
     FLOAT **filter,
     int *sym_info,
     int start,
     int end,
     int *A_SIZE, 
-    CUdeviceptr A_SIZE_dev, 
+    CUdeviceptr *A_SIZE_dev, 
     int **B_SIZE,
     int **M_size_array, 
     int L_MAX, 

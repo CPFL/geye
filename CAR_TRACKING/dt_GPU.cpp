@@ -224,7 +224,7 @@ FLOAT ****dt_GPU(
 
   /* get max thread num per block */
   int max_threads_num = 0;
-  res = cuDeviceGetAttribute(&max_threads_num, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, dev);
+  res = cuDeviceGetAttribute(&max_threads_num, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, dev[0]);
   if(res != CUDA_SUCCESS){
     printf("\ncuDeviceGetAttribute() failed: res = %s\n", conv(res));
     exit(1);
@@ -260,11 +260,10 @@ FLOAT ****dt_GPU(
   if((max_dim0*max_dim1) % thread_num_x != 0) block_num_x++;
   if(max_numpart % thread_num_y != 0) block_num_y++;
 
-
   /* launch iverse_Q */
   gettimeofday(&tv_kernel_start, NULL);
   res = cuLaunchKernel(
-                       func_inverse_Q,      // call function
+                       func_inverse_Q[0],      // call function
                        block_num_x,         // gridDimX
                        block_num_y,         // gridDimY
                        L_MAX-interval,      // gridDimZ
@@ -326,7 +325,7 @@ FLOAT ****dt_GPU(
   /* launch dt1d_x */
   gettimeofday(&tv_kernel_start, NULL);
   res = cuLaunchKernel(
-                       func_dt1d_x,    // call function
+                       func_dt1d_x[0],    // call function
                        block_num_x,    // gridDimX
                        block_num_y,    // gridDimY
                        L_MAX-interval, // gridDimZ
@@ -388,7 +387,7 @@ FLOAT ****dt_GPU(
   /* prepare for launch dt1d_y */
   gettimeofday(&tv_kernel_start, NULL);
   res = cuLaunchKernel(
-                       func_dt1d_y,    // call functions
+                       func_dt1d_y[0],    // call functions
                        block_num_x,    // gridDimX
                        block_num_y,    // gridDimY
                        L_MAX-interval, // gridDimZ
