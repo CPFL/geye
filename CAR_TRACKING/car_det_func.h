@@ -39,6 +39,7 @@ extern IplImage *load_suc_image(int fnum);															//load image_pictures
 //showboxes.cpp
 //extern void showboxes(IplImage *Image,MODEL *MO,FLOAT *boxes,int *NUM);
 extern void show_rects(IplImage *Image,RESULT *CUR,FLOAT ratio);									//show rectangle-boxes
+extern void show_rects_custom(IplImage *Image,RESULT *CUR,FLOAT ratio, int **rbuf, int *head, int *tail, int semid);									//show rectangle-boxes
 //extern void show_array(IplImage *Image,RESULT *LR,int *PP);										//show integer array(for debug)
 //extern int *show_particles(IplImage *Image,RESULT *CUR,PINFO *P_I);								//show particles (for debug)
 //extern void show_det_score(IplImage *Image,FLOAT *ac_score,RESULT *CUR);							//show detector score (for debug)

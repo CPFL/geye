@@ -49,9 +49,11 @@
 //#define IN_S_NAME		"C:\\TESTIM_2010_2_3\\"			//Input-Image(successive)
 //#define IN_S_NAME		"C:\\Users\\kawano\\Desktop\\re\\"	
 #define IN_S_NAME		"CAR_TRACKING/Test_Images/Daytime_Image_PNG/"			//Input-Image(successive)	
+//#define IN_S_NAME		"/home/hirabayashi/dev/autonomous_driving_system/org_image/"			//Input-Image(successive)	
 #define OUTMNAME		"Out.avi"				//output movie name
 #define OUT_NAME		"Out_Image/res"		//Result name
 #define EX_NAME			".png"
+//#define EX_NAME			".bmp"
 
 //#define F_NAME_COM		"car_comp.csv"			//file name (component)
 #define F_NAME_COM		"./CAR_TRACKING/car_comp.csv"			//file name (component)

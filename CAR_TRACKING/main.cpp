@@ -42,6 +42,8 @@
 #include "for_use_GPU.h"
 #include "switch_float.h"
 
+//#include "data_for_shm.h"
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -135,7 +137,9 @@ int main(void)
   get_f_size(fp,&curpos,&fsize);
   
   //open image-window(OpenCV)
+#if 0
   cvNamedWindow(WIN_A,CV_WINDOW_AUTOSIZE);	//for scan point mapping on image
+#endif
   //cvNamedWindow(WIN_B,CV_WINDOW_AUTOSIZE);		//for scan point 2D mapping
   
   //get movie-file pass
@@ -148,12 +152,95 @@ int main(void)
   //skip_data(fp,capt,1200,&fnum);
   skip_data_2(fp,1,&ss);   //Ç†ÇÈà íuÇ©ÇÁÇÃâÊëúÇå©ÇÈ(ç°ÇÕ50ñáñ⁄Ç©ÇÁÇ›ÇƒÇ¢ÇÈÅB)
   
+
+
+  // /***************************************************************************************************/
+  // /***************************************************************************************************/
+  // // to use shared memory
+  // /***************************************************************************************************/
+
+  // // generate key
+  // key_t shm_key_rbuf_dst = ftok(RBUF_DST_PATH, 1);
+  // if(shm_key_rbuf_dst == -1) {
+  //   printf("key generation for rbuf_dst_SHM is failed\n");
+  // }
+
+  // key_t shm_key_rbuf = ftok(RBUF_PATH, 1);
+  // if(shm_key_rbuf == -1) {
+  //   printf("key generation for rbuf_SHM is failed\n");
+  // }
+
+  // key_t shm_key_rbuf_head = ftok(RBUF_HEAD_PATH, 1);
+  // if(shm_key_rbuf_head == -1) {
+  //   printf("key generation for rbuf_head_SHM is failed\n");
+  // }
+
+  // key_t shm_key_rbuf_tail = ftok(RBUF_TAIL_PATH, 1);
+  // if(shm_key_rbuf_tail == -1) {
+  //   printf("key generation for rbuf_tail_SHM is failed\n");
+  // }
+
+
+  // // generate key for semaphore
+  // key_t sem_key = ftok(SEM_PATH, 1);  // key for semaphore
+  // if(sem_key == -1) {  // error semantics
+  //   printf("key heneration for semaphore is failed\n");
+  // }
+
+  
+  // // access to the shared memory
+  // int shrd_id_rbuf_dst = shmget(shm_key_rbuf_dst, RBUF_ELEMENT_NUM*sizeof(int), 0666);
+  // if(shrd_id_rbuf_dst < 0) {
+  //   printf("Can't Access to the Shared Memory!! \n");
+  // }
+
+  // int shrd_id_rbuf = shmget(shm_key_rbuf, MAX_OBJECT_NUM*sizeof(int*), 0666);
+  // if(shrd_id_rbuf < 0) {
+  //   printf("Can't Access to the Shared Memory!! \n");
+  // }
+
+  // int shrd_id_rbuf_head = shmget(shm_key_rbuf_head, sizeof(int), 0666);
+  // if(shrd_id_rbuf_head < 0) {
+  //   printf("Can't Access to the Shared Memory!! \n");
+  // }
+
+  // int shrd_id_rbuf_tail = shmget(shm_key_rbuf_tail, sizeof(int), 0666);
+  // if(shrd_id_rbuf_tail < 0) {
+  //   printf("Can't Access to the Shared Memory!! \n");
+  // }
+
+
+  // // open semaphore
+  // int semid = semget(sem_key, 1, 0666);
+  // if(semid == -1) {
+  //   printf("Can't Access to the semaphore\n");
+  // }
+  
+  // int *shrd_ptr_rbuf_dst = (int *)shmat(shrd_id_rbuf_dst, NULL, 0);
+  // int **shrd_ptr_rbuf = (int **)shmat(shrd_id_rbuf, NULL, 0);
+  // int *shrd_ptr_rbuf_head = (int *)shmat(shrd_id_rbuf_head, NULL, 0);
+  // int *shrd_ptr_rbuf_tail = (int *)shmat(shrd_id_rbuf_tail, NULL, 0);
+  
+  // int *tmpptr = shrd_ptr_rbuf_dst;
+  // for(int i=0; i<MAX_OBJECT_NUM; i++) {
+  //   shrd_ptr_rbuf[i] = tmpptr;
+  //   tmpptr += CO_NUM;
+  // }
+
+  // /***************************************************************************************************/
+  // // to use shared memory
+  // /***************************************************************************************************/
+  // /***************************************************************************************************/
+  
   
   
   //load laser and movie data
   //for(int im=ss;im<2000;im++)
-  for(int im=1;im<=11;im++)
+  //  for(int im=1;im<=11;im++)
+  while(1)
     {
+      int im = 1;
+
       gettimeofday(&tv_1process_start, NULL);
       time_memcpy = 0;
       time_kernel = 0;
@@ -269,10 +356,23 @@ int main(void)
       /////////////visualization////////////
       //////////////////////////////////////
 
+#if 0
+      cvShowImage("for debug", IM_D);
+      cvWaitKey(0);
+#endif
+
       //Scan-point visualization
       //IplImage *TDMAP=draw_sdata(Sdata,IM_D,CUR);									//visualize scan data
       //detection result visualization
       show_rects(IM_D,CUR,ratio);											//visualize car-boundary-box
+      // show_rects_custom(IM_D,
+      //                   CUR,
+      //                   ratio,
+      //                   shrd_ptr_rbuf,
+      //                   shrd_ptr_rbuf_head,
+      //                   shrd_ptr_rbuf_tail,
+      //                   semid
+      //                   );											//visualize car-boundary-box
       //show_vector(IM_D,TDMAP,CUR,&P_I,ratio);									//visualize velocity-vector
 
       cvShowImage(WIN_A,IM_D);											//show image (RESULT & scan-point)
@@ -309,7 +409,7 @@ int main(void)
 #endif
 
 
-#if 1
+#if 0
       printf("\n****** To finish program, type \"Esc\" key *****\n");
       int IN_KEY=cvWaitKey(0);
       //        if(IN_KEY==0x1b) break;
@@ -329,7 +429,9 @@ int main(void)
 	}
 
   //close window
+#if 0
   cvDestroyWindow(WIN_A);	//destroy window
+#endif
   //cvDestroyWindow(WIN_B);	//destroy window
 
   //release car-detector-model
