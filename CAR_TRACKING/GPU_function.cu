@@ -351,7 +351,9 @@ inverse_Q(
   int NoC,
   int max_numpart,
   int interval,
-  int L_MAX
+  int L_MAX,
+  int pid,
+  int device_number
           )
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -359,8 +361,23 @@ inverse_Q(
   int jj = threadIdx.z;
   int L = blockIdx.z;
 
+#if 0
+  part_z = (L_MAX-interval) / device_number;
+  if((L_MAX-interval)%device_number != 0){
+    part_z++;
+  }
+
+  L = L + part_z * pid; 
+
+  if(L < part_z*pid && L >= part_z*(pid+1)){
+    return ;
+  }
+#endif
+
+
   if(0<=L && L < (L_MAX-interval)) 
-    {  
+    {
+  
       /* loop condition */
       for(int h=0; h<error_array_num; h++) {
         if(L==error_array[h]){ 
@@ -373,11 +390,13 @@ inverse_Q(
           int numpart_jj = numpart[jj];
           
           if( 0<=kk && kk < numpart_jj )
-            {
+            {      
+
               int PIDX = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
               int dim0 = size_array[L*NoP*2 + PIDX*2];
               int dim1 = size_array[L*NoP*2 + PIDX*2+1];
-              
+
+
               /* pointer adjustment */
               FLOAT *src;
               unsigned long long int ptr_adjuster = (unsigned long long int)src_start;
@@ -478,13 +497,17 @@ dt1d_x(
   int NoC,                      // NoC
   int max_numpart,              // max_numpart
   int interval,                 // interval
-  int L_MAX                     // L_MAX
+  int L_MAX,                     // L_MAX
+  int pid,                       // pid
+  int device_number              // device_number
+
        ) 
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int kk = blockIdx.y * blockDim.y + threadIdx.y;
   int jj = threadIdx.z;
   int L = blockIdx.z;
+
 
   if(0<=L && L<(L_MAX-interval)) 
     {
@@ -502,16 +525,15 @@ dt1d_x(
           if(0<=kk && kk<numpart_jj) 
             {
               int PIDX = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
-              int XD=0;
-              int step = 1;
               int dim0 = size_array[L*NoP*2 + PIDX*2];
               int dim1 = size_array[L*NoP*2 + PIDX*2+1]; 
+              int XD=0;
+              int step = 1;
               int n = dim0;  
               int DID_4 = DID_4_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
               FLOAT a = def_array[DID_4+2];
               FLOAT b = def_array[DID_4+3];
-              
-              
+             
               /* pointer adjustment */
               unsigned long long int adj_src = (unsigned long long int)src_start;
               unsigned long long int adj_dst = (unsigned long long int)dst_start;
@@ -633,13 +655,28 @@ dt1d_y(
   int interval,                 // interval
   int L_MAX,                    // L_MAX
   int *error_array,             // part_error_array_dev
-  int error_array_num           // part_error_array_num
+  int error_array_num,           // part_error_array_num
+  int pid,                       // pid
+  int device_number              // device_number
        ) 
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int kk = blockIdx.y * blockDim.y + threadIdx.y;
   int jj = threadIdx.z;
   int L = blockIdx.z;
+
+#if 0
+  part_z = (L_MAX-interval) / device_number;
+  if((L_MAX-interval)%device_number != 0){
+    part_z++;
+  }
+
+  L = L + part_z * pid; 
+
+  if(L < part_z*pid && L >= part_z*(pid+1)){
+    return ;
+  }
+#endif
 
   if(0<=L && L<(L_MAX-interval)) 
     {

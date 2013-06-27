@@ -69,6 +69,8 @@ struct timeval tv_memcpy_start, tv_memcpy_end;
 float time_memcpy;
 struct timeval tv_kernel_start, tv_kernel_end;
 float time_kernel;
+
+
 int device_num;
 
 int main(void)
@@ -92,7 +94,7 @@ int main(void)
   float one_process;
   struct timeval tv_car_detection_start, tv_car_detection_end;
   float time_car_detection;
-
+  float other;
   
   
   /* Output file for detect result */
@@ -301,10 +303,8 @@ int main(void)
       one_process = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
       //      printf("car_detection : %f\n", time_car_detection);
-
       printf("memory copy    %f\n", time_memcpy);
       printf("kernel execute %f\n", time_kernel);
-
       printf("1process : %f\n", one_process);
 #endif
 

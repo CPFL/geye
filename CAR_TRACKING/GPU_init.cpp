@@ -315,8 +315,6 @@ void clean_cuda(void)
     }
   }
 
-
-
     free(NR_MAXTHREADS_X);
     free(NR_MAXTHREADS_Y);
     free(func_process_root);
