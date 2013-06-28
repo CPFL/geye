@@ -360,20 +360,23 @@ inverse_Q(
   int kk = blockIdx.y * blockDim.y + threadIdx.y;
   int jj = threadIdx.z;
   int L = blockIdx.z;
+  int numpart_jj;
+  int C_y;
 
-#if 0
-  part_z = (L_MAX-interval) / device_number;
-  if((L_MAX-interval)%device_number != 0){
-    part_z++;
-  }
 
-  L = L + part_z * pid; 
-
-  if(L < part_z*pid && L >= part_z*(pid+1)){
-    return ;
-  }
-#endif
-
+  if(0<=jj && jj<NoC)
+    {
+      numpart_jj = numpart[jj];
+      C_y = numpart_jj/device_number;
+      if(numpart_jj%device_number != 0){
+        C_y++;
+       }
+      kk = kk + pid * C_y;
+      if(kk < C_y * pid  ||  kk >=  C_y * (pid + 1)){
+         return ;
+       }
+    } else return ;
+   
 
   if(0<=L && L < (L_MAX-interval)) 
     {
@@ -385,60 +388,54 @@ inverse_Q(
         }
       }
     
-      if(0<=jj && jj<NoC) 
+     
+      if( 0<=kk && kk < numpart_jj )
         {
-          int numpart_jj = numpart[jj];
-          
-          if( 0<=kk && kk < numpart_jj )
-            {      
+          int PIDX = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
+          int dim0 = size_array[L*NoP*2 + PIDX*2];
+          int dim1 = size_array[L*NoP*2 + PIDX*2+1]; 
 
-              int PIDX = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
-              int dim0 = size_array[L*NoP*2 + PIDX*2];
-              int dim1 = size_array[L*NoP*2 + PIDX*2+1];
-
+          if( idx < 0 || dim0*dim1 <= idx) return;
 
               /* pointer adjustment */
-              FLOAT *src;
-              unsigned long long int ptr_adjuster = (unsigned long long int)src_start;
-              for(int i=0; i<L; i++) {
+          FLOAT *src;
+          unsigned long long int ptr_adjuster = (unsigned long long int)src_start;
+          for(int i=0; i<L; i++) {
                 
                 /* apply error condition */
-                int error_flag=0;
-                for(int h=0; h<error_array_num; h++) {
-                  if(i==error_array[h]){ 
-                    error_flag = 1;
-                  }
-                }
-                if(error_flag != 0) {
-                  continue;    
-                }
+            int error_flag=0;
+            for(int h=0; h<error_array_num; h++) {
+              if(i==error_array[h]){
+                error_flag = 1;
+              }
+            }
+            if(error_flag != 0) {
+              continue;
+            }
 
                 
-                for(int j=0; j<NoP; j++) {
-                  int height = size_array[i*NoP*2 + j*2];
-                  int width = size_array[i*NoP*2 + j*2+1];
-                  ptr_adjuster += (unsigned long long int)(height*width*sizeof(FLOAT));
+            for(int j=0; j<NoP; j++) {
+              int height = size_array[i*NoP*2 + j*2];
+              int width = size_array[i*NoP*2 + j*2+1];
+              ptr_adjuster += (unsigned long long int)(height*width*sizeof(FLOAT));
                   
-                }
-              }
+            }
+          }
               
    
               
-              for(int j=0; j<PIDX; j++) {
-                int height = size_array[L*NoP*2 + j*2];
-                int width = size_array[L*NoP*2 + j*2+1];
-                ptr_adjuster += (unsigned long long int)(height*width*sizeof(FLOAT));
-              }
+          for(int j=0; j<PIDX; j++) {
+            int height = size_array[L*NoP*2 + j*2];
+            int width = size_array[L*NoP*2 + j*2+1];
+            ptr_adjuster += (unsigned long long int)(height*width*sizeof(FLOAT));
+          }
               
-              src = (FLOAT *)ptr_adjuster;  
-              
-              if( 0<=idx && idx<dim0*dim1) {
-                *(src + idx) *= -1;
-              }
-            }
-        }
-    }
+          src = (FLOAT *)ptr_adjuster;  
+                        
+          *(src + idx) *= -1;
         
+      }
+    }       
 }
 
 
@@ -507,6 +504,27 @@ dt1d_x(
   int kk = blockIdx.y * blockDim.y + threadIdx.y;
   int jj = threadIdx.z;
   int L = blockIdx.z;
+  int numpart_jj;
+  int C_y;
+
+  if(0<=jj && jj<NoC)
+    {
+
+      numpart_jj = numpart[jj];
+      C_y = numpart_jj/device_number;
+
+      if(numpart_jj%device_number != 0){
+        C_y++;
+       }
+ 
+      kk = kk + pid * C_y;
+ 
+      if(kk < C_y * pid  ||  kk >=  C_y * (pid + 1)){
+         return ;
+       }
+    } else{
+      return ;
+    }
 
 
   if(0<=L && L<(L_MAX-interval)) 
@@ -517,121 +535,117 @@ dt1d_x(
           return;
         }
       }
-      
-      if(0<=jj && jj<NoC) 
+                
+      if(0<=kk && kk<numpart_jj)
         {
-          int numpart_jj = numpart[jj];
-          
-          if(0<=kk && kk<numpart_jj) 
-            {
-              int PIDX = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
-              int dim0 = size_array[L*NoP*2 + PIDX*2];
-              int dim1 = size_array[L*NoP*2 + PIDX*2+1]; 
-              int XD=0;
-              int step = 1;
-              int n = dim0;  
-              int DID_4 = DID_4_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
-              FLOAT a = def_array[DID_4+2];
-              FLOAT b = def_array[DID_4+3];
+          int PIDX = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
+          int dim1 = size_array[L*NoP*2 + PIDX*2+1]; 
+
+          if( idx < 0 || dim1 <= idx ) return;
+
+          int dim0 = size_array[L*NoP*2 + PIDX*2];
+          int XD=0;
+          int step = 1;
+          int n = dim0;  
+          int DID_4 = DID_4_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
+          FLOAT a = def_array[DID_4+2];
+          FLOAT b = def_array[DID_4+3];
              
-              /* pointer adjustment */
-              unsigned long long int adj_src = (unsigned long long int)src_start;
-              unsigned long long int adj_dst = (unsigned long long int)dst_start;
-              unsigned long long int adj_ptr = (unsigned long long int)ptr_start;
-              /* for src */
-              for(int i=0; i<L; i++) {
+          /* pointer adjustment */
+          unsigned long long int adj_src = (unsigned long long int)src_start;
+          unsigned long long int adj_dst = (unsigned long long int)dst_start;
+          unsigned long long int adj_ptr = (unsigned long long int)ptr_start;
+          /* for src */
+          for(int i=0; i<L; i++) {
                 
-                /* apply error condition */
-                int error_flag=0;
-                for(int h=0; h<error_array_num; h++) {
-                  if(i==error_array[h]){ 
-                    error_flag = 1;
-                  }
-                }
-                if(error_flag != 0) {
-                  continue;    
-                }
+            /* apply error condition */
+            int error_flag=0;
+            for(int h=0; h<error_array_num; h++) {
+              if(i==error_array[h]){
+                error_flag = 1;
+              }
+            }
+            if(error_flag != 0) {
+              continue;
+            }
                 
-                for(int j=0; j<NoP; j++) {
-                  int height = size_array[i*NoP*2 + j*2];
-                  int width = size_array[i*NoP*2 + j*2+1];
-                  adj_src += (unsigned long long int)(height*width*sizeof(FLOAT));
+            for(int j=0; j<NoP; j++) {
+              int height = size_array[i*NoP*2 + j*2];
+              int width = size_array[i*NoP*2 + j*2+1];
+              adj_src += (unsigned long long int)(height*width*sizeof(FLOAT));
                   
-                }
-              }
+            }
+          }
               
               
-              for(int j=0; j<PIDX; j++) {
-                int height = size_array[L*NoP*2 + j*2];
-                int width = size_array[L*NoP*2 + j*2+1];
-                adj_src += (unsigned long long int)(height*width*sizeof(FLOAT));
-              }
+          for(int j=0; j<PIDX; j++) {
+            int height = size_array[L*NoP*2 + j*2];
+            int width = size_array[L*NoP*2 + j*2+1];
+            adj_src += (unsigned long long int)(height*width*sizeof(FLOAT));
+          }
               
               /* for dst, ptr */
               // adjust "dst" to tmpM[L][jj][kk]
               // adjust "ptr" to tmpIy[L][jj][kk]
-              for(int i=0; i<L; i++) {
+          for(int i=0; i<L; i++) {
                 
                 /* apply error condition */
-                int error_flag=0;
-                for(int h=0; h<error_array_num; h++) {
-                  if(i==error_array[h]){ 
-                    error_flag = 1;
-                  }
-                }
-                if(error_flag != 0) {
-                  continue;    
-                }
-                
-                for(int j=0; j<NoC; j++) {
-                  for(int k=0; k<numpart[j]; k++) {
-                    int PIDX_tmp = PIDX_array[i*(NoC*max_numpart) + j*max_numpart + k]; 
-                    int dims0_tmp = size_array[i*NoP*2 + PIDX_tmp*2]; 
-                    int dims1_tmp = size_array[i*NoP*2 + PIDX_tmp*2+1];
-
-                    
-                    adj_dst += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
-                    adj_ptr += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(int));
-                    
-                    
-                  }
-                }
+            int error_flag=0;
+            for(int h=0; h<error_array_num; h++) {
+              if(i==error_array[h]){
+                error_flag = 1;
               }
-              
-
-              for(int i=0; i<jj; i++) {
-                for(int j=0; j<numpart[i]; j++) {
-                  int PIDX_tmp = PIDX_array[L*(NoC*max_numpart) + i*max_numpart + j]; // PIDX_array[L][i][j]
-                  int dims0_tmp = size_array[L*NoP*2 + PIDX_tmp*2]; // size_array[L][PIDX_tmp*2]
-                  int dims1_tmp = size_array[L*NoP*2 + PIDX_tmp*2+1]; // size_array[L][PIDX_tmp*2+1]
-                  
-                  adj_dst += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
-                  adj_ptr += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(int));
-                  
-                }
-          }
-              
-              for(int j=0; j<kk; j++) {
-                int PIDX_tmp = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + j]; // PIDX_array[L][jj][j]
-                int dims0_tmp = size_array[L*NoP*2 + PIDX_tmp*2]; // size_array[L][PIDX_tmp*2]
-                int dims1_tmp = size_array[L*NoP*2 + PIDX_tmp*2+1]; // size_array[L][PIDX_tmp*2+1]
+            }
+            if(error_flag != 0) {
+              continue;
+            }
                 
+            for(int j=0; j<NoC; j++) {
+              for(int k=0; k<numpart[j]; k++) {
+                int PIDX_tmp = PIDX_array[i*(NoC*max_numpart) + j*max_numpart + k];
+                int dims0_tmp = size_array[i*NoP*2 + PIDX_tmp*2];
+                int dims1_tmp = size_array[i*NoP*2 + PIDX_tmp*2+1];
+
+                    
                 adj_dst += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
                 adj_ptr += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(int));
+                    
+                    
               }
-              
-              
-              FLOAT *src = (FLOAT *)adj_src;
-              FLOAT *dst = (FLOAT *)adj_dst;
-              int *ptr = (int *)adj_ptr;
-              
-              /* main calculation of di1d_x */
-              if(0<=idx && idx<dim1)
-                {
-                  XD = idx*dim0;
-                  dt_helper(src+XD, dst+XD, ptr+XD, step, 0, n-1, 0, n-1, a, b);
-                }
             }
+          }
+              
+
+          for(int i=0; i<jj; i++) {
+            for(int j=0; j<numpart[i]; j++) {
+              int PIDX_tmp = PIDX_array[L*(NoC*max_numpart) + i*max_numpart + j]; // PIDX_array[L][i][j]
+              int dims0_tmp = size_array[L*NoP*2 + PIDX_tmp*2]; // size_array[L][PIDX_tmp*2]
+              int dims1_tmp = size_array[L*NoP*2 + PIDX_tmp*2+1]; // size_array[L][PIDX_tmp*2+1]
+                  
+              adj_dst += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
+              adj_ptr += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(int));
+                  
+            }
+          }
+              
+          for(int j=0; j<kk; j++) {
+            int PIDX_tmp = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + j]; // PIDX_array[L][jj][j]
+            int dims0_tmp = size_array[L*NoP*2 + PIDX_tmp*2]; // size_array[L][PIDX_tmp*2]
+            int dims1_tmp = size_array[L*NoP*2 + PIDX_tmp*2+1]; // size_array[L][PIDX_tmp*2+1]
+                
+            adj_dst += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
+            adj_ptr += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(int));
+          }
+              
+              
+          FLOAT *src = (FLOAT *)adj_src;
+          FLOAT *dst = (FLOAT *)adj_dst;
+          int *ptr = (int *)adj_ptr;
+              
+          /* main calculation of di1d_x */
+          XD = idx*dim0;
+          dt_helper(src+XD, dst+XD, ptr+XD, step, 0, n-1, 0, n-1, a, b);
+            
         }
     }
 }
@@ -664,19 +678,28 @@ dt1d_y(
   int kk = blockIdx.y * blockDim.y + threadIdx.y;
   int jj = threadIdx.z;
   int L = blockIdx.z;
+  int numpart_jj;
+  int C_y;
 
-#if 0
-  part_z = (L_MAX-interval) / device_number;
-  if((L_MAX-interval)%device_number != 0){
-    part_z++;
-  }
+  if(0<=jj && jj<NoC)
+    {
 
-  L = L + part_z * pid; 
+      numpart_jj = numpart[jj];
+      C_y = numpart_jj/device_number;
 
-  if(L < part_z*pid && L >= part_z*(pid+1)){
-    return ;
-  }
-#endif
+      if(numpart_jj%device_number != 0){
+        C_y++;
+       }
+ 
+      kk = kk + pid * C_y;
+ 
+      if(kk < C_y * pid  ||  kk >=  C_y * (pid + 1)){
+         return ;
+       }
+    } else{
+      return ;
+    }
+
 
   if(0<=L && L<(L_MAX-interval)) 
     {
@@ -687,94 +710,93 @@ dt1d_y(
         }
       }
       
-      if(0<=jj && jj<NoC)
+      
+      if( 0<=kk && kk<numpart_jj)
         {
-          int numpart_jj = numpart[jj];
-          
-          if( 0<=kk && kk<numpart_jj)
-            {
-              int PIDX = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
-              int dim0 = size_array[L*NoP*2 + PIDX*2];
-              int dim1 = size_array[L*NoP*2 + PIDX*2+1];
-              int step  = dim0;
-              int n = dim1;
+          int PIDX = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
+          int dim0 = size_array[L*NoP*2 + PIDX*2];
+
+          if( idx < 0 || dim0 <= idx ) return;
+
+          int dim1 = size_array[L*NoP*2 + PIDX*2+1];
+          int step  = dim0;
+          int n = dim1;
               
-              int DID_4 = DID_4_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
+          int DID_4 = DID_4_array[L*(NoC*max_numpart) + jj*max_numpart + kk];
               
-              FLOAT a = def_array[DID_4];   // ax
-              FLOAT b = def_array[DID_4+1]; // bx
+          FLOAT a = def_array[DID_4];   // ax
+          FLOAT b = def_array[DID_4+1]; // bx
               
               /* pointer adjustment */
-              unsigned long long int adj_src = (unsigned long long int)src_start;
-              unsigned long long int adj_dst = (unsigned long long int)dst_start;
-              unsigned long long int adj_ptr = (unsigned long long int)ptr_start;
+          unsigned long long int adj_src = (unsigned long long int)src_start;
+          unsigned long long int adj_dst = (unsigned long long int)dst_start;
+          unsigned long long int adj_ptr = (unsigned long long int)ptr_start;
               /* for src, dst, ptr */
               /* adjust "src" to tmpM[L][jj][kk] */
               /* adjust "dst" to M[L][jj][kk] */
               /* adjust "ptr" to tmpIx[L][jj][kk] */
-              for(int i=0; i<L; i++) {
+          for(int i=0; i<L; i++) {
 
-                /* apply error condition */
-                int error_flag=0;
-                for(int h=0; h<error_array_num; h++) {
-                  if(i==error_array[h]){ 
-                    error_flag = 1;
-                  }
-                }
-                if(error_flag != 0) {
-                  continue;    
-                }
-                
-                for(int j=0; j<NoC; j++) {
-                  for(int k=0; k<numpart[j]; k++) {
-                    
-                    int PIDX_tmp = PIDX_array[i*(NoC*max_numpart) + j*max_numpart + k]; 
-                    int dims0_tmp = size_array[i*NoP*2 + PIDX_tmp*2]; 
-                    int dims1_tmp = size_array[i*NoP*2 + PIDX_tmp*2+1];
-                    
-                    adj_src += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
-                    adj_dst += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
-                    adj_ptr += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(int));
-                    
-                  }
-                }
+            /* apply error condition */
+            int error_flag=0;
+            for(int h=0; h<error_array_num; h++) {
+              if(i==error_array[h]){
+                error_flag = 1;
               }
-
-
-              for(int i=0; i<jj; i++) {
-                for(int j=0; j<numpart[i]; j++) {
-                  int PIDX_tmp = PIDX_array[L*(NoC*max_numpart) + i*max_numpart + j]; // PIDX_array[L][i][j]
-                  int dims0_tmp = size_array[L*NoP*2 + PIDX_tmp*2]; // size_array[L][PIDX_tmp*2]
-                  int dims1_tmp = size_array[L*NoP*2 + PIDX_tmp*2+1]; // size_array[L][PIDX_tmp*2+1]
-                  
-                  adj_src += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
-                  adj_dst += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
-                  adj_ptr += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(int));
-                  
-                }
-              }
-              
-              for(int j=0; j<kk; j++) {
-                int PIDX_tmp = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + j];
-                int dims0_tmp = size_array[L*NoP*2 + PIDX_tmp*2];
-                int dims1_tmp = size_array[L*NoP*2 + PIDX_tmp*2+1];
+            }
+            if(error_flag != 0) {
+              continue;
+            }
                 
+            for(int j=0; j<NoC; j++) {
+              for(int k=0; k<numpart[j]; k++) {
+                    
+                int PIDX_tmp = PIDX_array[i*(NoC*max_numpart) + j*max_numpart + k];
+                int dims0_tmp = size_array[i*NoP*2 + PIDX_tmp*2];
+                int dims1_tmp = size_array[i*NoP*2 + PIDX_tmp*2+1];
+                    
                 adj_src += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
                 adj_dst += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
                 adj_ptr += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(int));
+                    
               }
-              
-              
-              
-              FLOAT *src = (FLOAT *)adj_src;
-              FLOAT *dst = (FLOAT *)adj_dst;
-              int *ptr = (int *)adj_ptr;
-              
-              if(0<=idx && idx<dim0){
-                dt_helper(src+idx, dst+idx, ptr+idx, step, 0, n-1, 0, n-1, a, b);
-              }
-              
             }
+          }
+
+
+          for(int i=0; i<jj; i++) {
+            for(int j=0; j<numpart[i]; j++) {
+              int PIDX_tmp = PIDX_array[L*(NoC*max_numpart) + i*max_numpart + j]; // PIDX_array[L][i][j]
+              int dims0_tmp = size_array[L*NoP*2 + PIDX_tmp*2]; // size_array[L][PIDX_tmp*2]
+              int dims1_tmp = size_array[L*NoP*2 + PIDX_tmp*2+1]; // size_array[L][PIDX_tmp*2+1]
+                  
+              adj_src += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
+              adj_dst += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
+              adj_ptr += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(int));
+                  
+            }
+          }
+              
+          for(int j=0; j<kk; j++) {
+            int PIDX_tmp = PIDX_array[L*(NoC*max_numpart) + jj*max_numpart + j];
+            int dims0_tmp = size_array[L*NoP*2 + PIDX_tmp*2];
+            int dims1_tmp = size_array[L*NoP*2 + PIDX_tmp*2+1];
+                
+            adj_src += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
+            adj_dst += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(FLOAT));
+            adj_ptr += (unsigned long long int)(dims0_tmp*dims1_tmp*sizeof(int));
+          }
+              
+              
+              
+          FLOAT *src = (FLOAT *)adj_src;
+          FLOAT *dst = (FLOAT *)adj_dst;
+          int *ptr = (int *)adj_ptr;
+              
+ 
+          dt_helper(src+idx, dst+idx, ptr+idx, step, 0, n-1, 0, n-1, a, b);
+          
+              
         }
     }
 }

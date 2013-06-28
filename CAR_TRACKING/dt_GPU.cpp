@@ -223,6 +223,12 @@ CUT_THREADPROC dt_thread_func(void *p){
   if((pt->max_dim0*pt->max_dim1) % thread_num_x != 0) block_num_x++;
   if(pt->max_numpart % thread_num_y != 0) block_num_y++;
 
+
+  int gridDimY = block_num_y / device_num;
+  if(block_num_y%device_num != 0){
+    gridDimY++;
+  } 
+
   /* launch iverse_Q */
   if(pt->pid == 0){
     gettimeofday(&tv_kernel_start, NULL);
@@ -230,7 +236,7 @@ CUT_THREADPROC dt_thread_func(void *p){
   res = cuLaunchKernel(
                        func_inverse_Q[pt->pid],      // call function
                        block_num_x,         // gridDimX
-                       block_num_y,         // gridDimY
+                       gridDimY,         // gridDimY
                        pt->L_MAX-pt->interval,      // gridDimZ
                        thread_num_x,        // blockDimX
                        thread_num_y,        // blockDimY
@@ -292,6 +298,10 @@ CUT_THREADPROC dt_thread_func(void *p){
   if(pt->max_dim1 % thread_num_x != 0) block_num_x++;
   if(pt->max_numpart % thread_num_y != 0) block_num_y++;
 
+  gridDimY = block_num_y / device_num;
+  if(block_num_y%device_num != 0){
+    gridDimY++;
+  } 
 
   /* launch dt1d_x */
   if(pt->pid == 0){
@@ -301,7 +311,7 @@ CUT_THREADPROC dt_thread_func(void *p){
   res = cuLaunchKernel(
                        func_dt1d_x[pt->pid],    // call function
                        block_num_x,    // gridDimX
-                       block_num_y,    // gridDimY
+                       gridDimY,    // gridDimY
                        pt->L_MAX-pt->interval, // gridDimZ
                        thread_num_x,   // blockDimX
                        thread_num_y,   // blockDimY
@@ -362,6 +372,10 @@ CUT_THREADPROC dt_thread_func(void *p){
   if(pt->max_dim0 % thread_num_x != 0) block_num_x++;
   if(pt->max_numpart % thread_num_y != 0) block_num_y++;
 
+  gridDimY = block_num_y / device_num;
+  if(block_num_y%device_num != 0){
+    gridDimY++;
+  } 
 
   /* prepare for launch dt1d_y */
   if(pt->pid == 0){
@@ -371,7 +385,7 @@ CUT_THREADPROC dt_thread_func(void *p){
   res = cuLaunchKernel(
                        func_dt1d_y[pt->pid],    // call functions
                        block_num_x,    // gridDimX
-                       block_num_y,    // gridDimY
+                       gridDimY,    // gridDimY
                        pt->L_MAX-pt->interval, // gridDimZ
                        thread_num_x,   // blockDimX
                        thread_num_y,   // blockDimY
@@ -402,67 +416,9 @@ CUT_THREADPROC dt_thread_func(void *p){
 
 
   /* downloads datas from GPU */
-#if 0
-  int part_size = 0;
-  int part_z = (pt->L_MAX-pt->interval) / device_num;
-  if((pt->L_MAX-pt->interval)%device_num != 0){
-    part_z++;
-  }
 
-  int start_L = part_z * pt->pid;
-  int end_L = part_z * (pt->pid + 1);
+  /* downloads M from GPU */
 
-  if(end_L > (pt->L_MAX-pt->interval)){
-    end_L = pt->L_MAX - pt->interval;
-  }
-
-
-
-  for(int L=start_L; L<end_L; L++) {
-
-    /**************************************************************************/
-    /* loop condition */
-    if( (pt->FSIZE[(L+pt->interval)*2]+2*pt->pady < pt->max_Y) || (pt->FSIZE[(L+pt->interval)*2+1]+2*pt->padx < pt->max_X) )
-      {
-        continue;
-      }
-    /* loop conditon */
-    /**************************************************************************/
-
-    for(int jj=0; jj<pt->NoC; jj++) {
-      
-      for(int kk=0; kk<pt->numpart[jj]; kk++) {
-        
-        int PIDX = pt->PIDX_array[L][jj][kk];
-        int dims0 = pt->size_array[L][PIDX*2];
-        int dims1 = pt->size_array[L][PIDX*2+1];
-        part_size += dims0 * dims1;
-      }
-
-    }
-
-  }
-
-  if(pt->pid == 0){
-    gettimeofday(&tv_memcpy_start, NULL);
-  }
-
-  res = cuMemcpyDtoH(pt->dst_M+pt->pid*part_size, M_dev+(pt->pid*part_size*sizeof(FLOAT)), part_size*sizeof(FLOAT));
-  if(res != CUDA_SUCCESS) {
-    printf("cuMemcpyDtoH(M) failed: res = %s\n", conv(res));
-    exit(1);
-  }
-
-  if(pt->pid == 0){
-    gettimeofday(&tv_memcpy_end, NULL);
-    tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
-    time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0:
-  }
-
-#endif
-
-
-#if 0
   int sum_part_size = 0;
   int sum_pointer_size = 0;
   int part_size = 0;
@@ -552,42 +508,202 @@ CUT_THREADPROC dt_thread_func(void *p){
       pointer_size = 0;
       move_size = 0;
 
+    }
+
+  }
+
+
+  /* downloads tmpIx from GPU */
+
+  sum_part_size = 0;
+  sum_pointer_size = 0;
+  part_size = 0;
+  pointer_size = 0;
+  part_y = 0;
+  move_size = 0;
+  error_flag = 0;
+  start_kk = 0;
+  end_kk = 0;
+  part_start_kk = 0;
+  part_end_kk = 0;
+  unsigned long long int pointer_dst_tmpIx = (unsigned long long int)pt->dst_tmpIx;
+  unsigned long long int pointer_tmpIx_dev = (unsigned long long int)tmpIx_dev;
+
+
+  for(int L=0; L<(pt->L_MAX-pt->interval); L++) {
+
+    /**************************************************************************/
+    /* loop condition */
+    if( (pt->FSIZE[(L+pt->interval)*2]+2*pt->pady < pt->max_Y) || (pt->FSIZE[(L+pt->interval)*2+1]+2*pt->padx < pt->max_X) )
+      {
+        continue;
+      }
+    /* loop conditon */
+    /**************************************************************************/
+
+
+    for(int jj=0; jj<pt->NoC; jj++) {
+
+      part_y = pt->numpart[jj] / device_num;
+      if(pt->numpart[jj]%device_num != 0){
+        part_y++;
+      }
+
+      start_kk = part_y * pt->pid;
+      end_kk = part_y * (pt->pid + 1);
+
+      if(end_kk > pt->numpart[jj]){
+        end_kk = pt->numpart[jj];
+      }
+
+      if(pt->pid > 0){
+        part_start_kk = part_y * (pt->pid - 1);
+        part_end_kk = part_y * pt->pid;
+      }
+      
+      for(int kk=0; kk<pt->numpart[jj]; kk++) {
+                       
+        int PIDX = pt->PIDX_array[L][jj][kk];
+        int dims0 = pt->size_array[L][PIDX*2];
+        int dims1 = pt->size_array[L][PIDX*2+1];
+        if(start_kk <= kk && kk < end_kk){
+           part_size += dims0 * dims1;
+        }
+        if(pt->pid > 0){
+          if(part_start_kk <= kk && kk < part_end_kk){
+            pointer_size += dims0 * dims1;
+          }
+        }
+        move_size += dims0 * dims1;
+      }
+
+      sum_part_size += part_size;
+      sum_pointer_size += pointer_size;
+
+      if(pt->pid == 0){
+        gettimeofday(&tv_memcpy_start, NULL);
+      }
+      
+      res = cuMemcpyDtoH((void *)(pointer_dst_tmpIx+(unsigned long long int)(pt->pid*pointer_size*sizeof(int))), (CUdeviceptr)(pointer_tmpIx_dev+(unsigned long long int)(pt->pid*pointer_size*sizeof(int))), part_size*sizeof(int));
+      if(res != CUDA_SUCCESS) {
+        printf("error pid = %d\n",pt->pid);
+        printf("cuMemcpyDtoH(M) failed: res = %s\n", conv(res));
+        exit(1);
+      }
+
+      if(pt->pid == 0){
+        gettimeofday(&tv_memcpy_end, NULL);
+        tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+        time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+      }
+
+      
+      pointer_dst_tmpIx += (unsigned long long int)(move_size * sizeof(FLOAT));
+      pointer_tmpIx_dev += (unsigned long long int)(move_size * sizeof(FLOAT));
+
+      part_size = 0;
+      pointer_size = 0;
+      move_size = 0;
 
     }
 
   }
 
-#endif
+
+  /* downloads tmpIy from GPU */
+
+  sum_part_size = 0;
+  sum_pointer_size = 0;
+  part_size = 0;
+  pointer_size = 0;
+  part_y = 0;
+  move_size = 0;
+  error_flag = 0;
+  start_kk = 0;
+  end_kk = 0;
+  part_start_kk = 0;
+  part_end_kk = 0;
+  unsigned long long int pointer_dst_tmpIy = (unsigned long long int)pt->dst_tmpIy;
+  unsigned long long int pointer_tmpIy_dev = (unsigned long long int)tmpIy_dev;
 
 
+  for(int L=0; L<(pt->L_MAX-pt->interval); L++) {
 
-  if(pt->pid == 0){
-    gettimeofday(&tv_memcpy_start, NULL);
-  }
+    /**************************************************************************/
+    /* loop condition */
+    if( (pt->FSIZE[(L+pt->interval)*2]+2*pt->pady < pt->max_Y) || (pt->FSIZE[(L+pt->interval)*2+1]+2*pt->padx < pt->max_X) )
+      {
+        continue;
+      }
+    /* loop conditon */
+    /**************************************************************************/
 
-  res = cuMemcpyDtoH(pt->dst_M, M_dev, pt->sum_size_SQ*sizeof(FLOAT));
-  if(res != CUDA_SUCCESS) {
-    printf("cuMemcpyDtoH(M) failed: res = %s\n", conv(res));
-    exit(1);
-  }
 
+    for(int jj=0; jj<pt->NoC; jj++) {
 
-  res = cuMemcpyDtoH(pt->dst_tmpIx, tmpIx_dev, pt->sum_size_SQ*sizeof(int));
-  if(res != CUDA_SUCCESS) {
-    printf("cuMemcpyDtoH(tmpIx) failed: res = %s\n", conv(res));
-    exit(1);
-  } 
-  
-  res = cuMemcpyDtoH(pt->dst_tmpIy, tmpIy_dev, pt->sum_size_SQ*sizeof(int));
-  if(res != CUDA_SUCCESS) {
-    printf("cuMemcpyDtoH(tmpIy) failed: res = %s\n", conv(res));
-    exit(1);
-  } 
+      part_y = pt->numpart[jj] / device_num;
+      if(pt->numpart[jj]%device_num != 0){
+        part_y++;
+      }
 
-  if(pt->pid == 0){
-    gettimeofday(&tv_memcpy_end, NULL);
-    tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
-    time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+      start_kk = part_y * pt->pid;
+      end_kk = part_y * (pt->pid + 1);
+
+      if(end_kk > pt->numpart[jj]){
+        end_kk = pt->numpart[jj];
+      }
+
+      if(pt->pid > 0){
+        part_start_kk = part_y * (pt->pid - 1);
+        part_end_kk = part_y * pt->pid;
+      }
+      
+      for(int kk=0; kk<pt->numpart[jj]; kk++) {
+                       
+        int PIDX = pt->PIDX_array[L][jj][kk];
+        int dims0 = pt->size_array[L][PIDX*2];
+        int dims1 = pt->size_array[L][PIDX*2+1];
+        if(start_kk <= kk && kk < end_kk){
+           part_size += dims0 * dims1;
+        }
+        if(pt->pid > 0){
+          if(part_start_kk <= kk && kk < part_end_kk){
+            pointer_size += dims0 * dims1;
+          }
+        }
+        move_size += dims0 * dims1;
+      }
+
+      sum_part_size += part_size;
+      sum_pointer_size += pointer_size;
+
+      if(pt->pid == 0){
+        gettimeofday(&tv_memcpy_start, NULL);
+      }
+      
+      res = cuMemcpyDtoH((void *)(pointer_dst_tmpIy+(unsigned long long int)(pt->pid*pointer_size*sizeof(int))), (CUdeviceptr)(pointer_tmpIy_dev+(unsigned long long int)(pt->pid*pointer_size*sizeof(int))), part_size*sizeof(int));
+      if(res != CUDA_SUCCESS) {
+        printf("error pid = %d\n",pt->pid);
+        printf("cuMemcpyDtoH(M) failed: res = %s\n", conv(res));
+        exit(1);
+      }
+
+      if(pt->pid == 0){
+        gettimeofday(&tv_memcpy_end, NULL);
+        tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+        time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+      }
+
+      
+      pointer_dst_tmpIy += (unsigned long long int)(move_size * sizeof(FLOAT));
+      pointer_tmpIy_dev += (unsigned long long int)(move_size * sizeof(FLOAT));
+
+      part_size = 0;
+      pointer_size = 0;
+      move_size = 0;
+
+    }
+
   }
 
 
