@@ -531,6 +531,18 @@ void calc_a_score_GPU(
     exit(1);
   }
 
+  res = cuMemFree(ssize_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(ssize_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemFree(size_score_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(size_score_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
   res = cuMemFree(RY_dev);
   if(res != CUDA_SUCCESS) {
     printf("cuMemFree(RY_dev) failed: res = %s\n", conv(res));
