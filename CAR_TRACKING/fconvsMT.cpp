@@ -9,22 +9,572 @@
 //Original header
 #include "MODEL_info.h"		//File information
 #include "Common.h"
-
+#include "multithreading.h"
+#include "multithreading.cpp"
 #include "for_use_GPU.h"
 
-
-CUdeviceptr root_C_dev, part_C_dev;
-CUdeviceptr root_error_array_dev, part_error_array_dev;
+// use for dt_GPU
 int part_error_array_num;
+int *part_error_array;
+size_t SUM_SIZE_C;
+FLOAT *dst_C;
+
+typedef struct {
+  FLOAT **featp2;
+  size_t SUM_SIZE_feat;
+  int *A_SIZE;
+  size_t SUM_SIZE_B;
+  size_t SUM_SIZE_C;
+  FLOAT *dst_C;
+  FLOAT **filter;
+  int len;
+  int calc_flag;
+  int error_array_num;
+  int start;
+  int *error_array;
+  int *B_dimension;
+  int interval;
+  int L_MAX;
+  int pid;
+  int max_height;
+  int max_width;
+} fconvs_partition;
+
+
+CUT_THREADPROC fconvs_thread_func(void *p){
+
+  fconvs_partition *pt = (fconvs_partition *)p;
+  CUresult res;
+  struct timeval tv;
+  int part_size_B_len;
+  int part_size_error_array_num;
+  int pid;
+  int gridDimX;
+  CUdeviceptr B_dev;
+  CUdeviceptr B_dims_dev;
+  CUdeviceptr part_root_C_dev;
+  CUdeviceptr part_part_C_dev;
+  CUdeviceptr part_root_error_array_dev;
+  CUdeviceptr part_part_error_array_dev;
+  CUdeviceptr featp2_dev;
+  CUdeviceptr A_SIZE_dev;
+  int thread_num_x, thread_num_y, block_num_x, block_num_y;
+
+  res = cuCtxSetCurrent(ctx[pt->pid]);
+  if(res != CUDA_SUCCESS) {
+    printf("cuCtxSetCurrent(ctx[%d]) failed: res = %s\n", pt->pid, conv(res));
+    exit(1);
+  }
+
+
+  /* define CUDA block shape */
+  int max_threads_num = 0;
+  res = cuDeviceGetAttribute(&max_threads_num, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, dev[pt->pid]);
+  if(res != CUDA_SUCCESS){
+    printf("\ncuDeviceGetAttribute() failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+
+  /* calculate max size of each block dimension */
+
+  NR_MAXTHREADS_X[pt->pid] = (int)sqrt((FLOAT)max_threads_num/pt->len);
+  NR_MAXTHREADS_Y[pt->pid] = (int)sqrt((FLOAT)max_threads_num/pt->len);
+  if(NR_MAXTHREADS_X[pt->pid] < 1) NR_MAXTHREADS_X[0]++;
+  if(NR_MAXTHREADS_Y[pt->pid] < 1) NR_MAXTHREADS_Y[0]++;
+  
+  thread_num_x = (pt->max_width < NR_MAXTHREADS_X[pt->pid]) ? pt->max_width : NR_MAXTHREADS_X[pt->pid];
+  thread_num_y = (pt->max_height < NR_MAXTHREADS_Y[pt->pid]) ? pt->max_height : NR_MAXTHREADS_Y[pt->pid];
+  
+  block_num_x = pt->max_width / thread_num_x;
+  block_num_y = pt->max_height / thread_num_y;
+  if(pt->max_width % thread_num_x != 0) block_num_x++;
+  if(pt->max_height % thread_num_y != 0) block_num_y++;
+
+
+
+  /* allocate GPU memory */
+
+  res = cuMemAlloc(&featp2_dev, pt->SUM_SIZE_feat);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(featp2_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemAlloc(&A_SIZE_dev, pt->L_MAX*3*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(new_PADsize_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemAlloc(&B_dev, pt->SUM_SIZE_B);
+  if(res != CUDA_SUCCESS){
+    printf("cuMemAlloc(B_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemAlloc(&B_dims_dev, 3*pt->len*sizeof(int));
+  if(res != CUDA_SUCCESS){
+    printf("cuMemAlloc(B_dims) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  switch(pt->calc_flag) {
+  case ROOT:
+    res = cuMemAlloc(&part_root_error_array_dev, pt->error_array_num*sizeof(int));
+    if(res != CUDA_SUCCESS){
+      printf("cuMemAlloc(root_error_array_dev) failed: res = %s\n", conv(res));
+    exit(1);
+    }
+    break;
+
+  case PART:
+    res = cuMemAlloc(&part_part_error_array_dev, pt->error_array_num*sizeof(int));
+    if(res != CUDA_SUCCESS){
+      printf("cuMemAlloc(part_error_array_dev) failed: res = %s\n", conv(res));
+    exit(1);
+    }
+    part_error_array_num = pt->error_array_num;
+    break;
+
+  default:
+    printf("NOT DEFINED value: calc_flag = %d\n", pt->calc_flag);
+    exit(1);
+    break;    
+  }
+
+
+  /* upload data to GPU memory */
+  if(pt->pid == 0){
+    gettimeofday(&tv_memcpy_start, NULL);
+  }
+
+
+  res = cuMemcpyHtoD(featp2_dev, pt->featp2[0], pt->SUM_SIZE_feat);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(featp2) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemcpyHtoD(A_SIZE_dev, pt->A_SIZE, pt->L_MAX*3*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(new_PADsize) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+
+  /* upload filter */
+  res = cuMemcpyHtoD(B_dev, pt->filter[pt->start],  pt->SUM_SIZE_B);
+  if(res != CUDA_SUCCESS){
+    printf("cuMemcpyHtoD(B_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+
+  switch(pt->calc_flag) {
+  case ROOT:
+    res = cuMemcpyHtoD(part_root_error_array_dev, pt->error_array, pt->error_array_num*sizeof(int));
+    if(res != CUDA_SUCCESS) {
+      printf("cuMemcpyHtoD(root_error_array_dev) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+    break;
+    
+  case PART:
+    res = cuMemcpyHtoD(part_part_error_array_dev, pt->error_array, pt->error_array_num*sizeof(int));
+    if(res != CUDA_SUCCESS) {
+      printf("cuMemcpyHtoD(part_error_array_dev) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+    break;
+    
+  default:
+    printf("NOT DEFINED value: calc_flag = %d\n", pt->calc_flag);
+    exit(1);
+    break;
+    
+  }
+
+  if(pt->pid == 0){
+    gettimeofday(&tv_memcpy_end, NULL);
+    tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+    time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+  }
+
+
+  /* allocate output region on GPU memory and upload date to GPU*/
+
+  switch(pt->calc_flag) {
+  case ROOT:
+    res = cuMemAlloc(&part_root_C_dev, pt->SUM_SIZE_C);
+    if(res != CUDA_SUCCESS) {
+      printf("cuMemAlloc(root_C_dev) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+
+    if(pt->pid == 0){
+      gettimeofday(&tv_memcpy_start, NULL);
+    }
+
+    res = cuMemcpyHtoD(part_root_C_dev, pt->dst_C, pt->SUM_SIZE_C);
+    if(res != CUDA_SUCCESS) {
+      printf("cuMemcpyHtoD(root_C_dev) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+
+    if(pt->pid == 0){
+      gettimeofday(&tv_memcpy_end, NULL);
+      tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+      time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+    }
+    break;
+
+  case PART:
+    res = cuMemAlloc(&part_part_C_dev, pt->SUM_SIZE_C);
+    if(res != CUDA_SUCCESS) {
+      printf("cuMemAlloc(part_C_dev) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+
+    if(pt->pid == 0){
+      gettimeofday(&tv_memcpy_start, NULL);
+    }
+
+    res = cuMemcpyHtoD(part_part_C_dev, pt->dst_C, pt->SUM_SIZE_C);
+    if(res != CUDA_SUCCESS) {
+      printf("cuMemcpyHtoD(part_C_dev) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+
+    if(pt->pid == 0){
+      gettimeofday(&tv_memcpy_end, NULL);
+      tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+      time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+    }
+ 
+    break;
+
+  default:
+    printf("NOT DEFINED value: calc_flag = %d\n", pt->calc_flag);
+    exit(1);
+    break;
+  }
+
+  if(pt->pid == 0){
+    gettimeofday(&tv_memcpy_start, NULL);
+  }
+
+  res = cuMemcpyHtoD(B_dims_dev, pt->B_dimension, 3*pt->len*sizeof(int));
+  if(res != CUDA_SUCCESS){
+    printf("cuMemcpyHtoD(B_dims) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  if(pt->pid == 0){
+    gettimeofday(&tv_memcpy_end, NULL);
+    tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+    time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+  }
+
+  /* launch kernel
+     grid shape : block_num_x * block_num_y * L_MAX, 
+     block shape : thread_num_x * thread_num_y * len 
+  */              
+  /* dealing with 1 feature(A) by 1 z_dimension of grid */
+  /* dealing with 1 model(B) by 1 z_dimension of block */
+
+  void *kernel_args[] = {
+    &featp2_dev,     // kernel_args[0]
+    &B_dev,                         // kernel_args[1]
+    &part_root_C_dev,               // kernel_args[2]
+    &A_SIZE_dev,     // kernel_args[3]
+    &B_dims_dev,                    // kernel_args[4]
+    (void *)&(pt->len),             // kernel_args[5]
+    (void *)&(pt->interval),        // kernel_args[6]
+    (void *)&(pt->L_MAX),           // kernel_args[7]
+    &part_root_error_array_dev,     // kernel_args[8]
+    (void *)&(pt->error_array_num), // kernel_args[9]
+    (void *)&(pt->pid),             // kernel_args[10]
+    (void *)&(device_num)           // kernel_args[11]
+  };
+  
+
+  if(pt->calc_flag == PART) {
+    kernel_args[2] = &part_part_C_dev;
+    kernel_args[8] = &part_part_error_array_dev;
+  }
+  int sharedMemBytes = 0;
+
+  gridDimX = block_num_x / device_num;
+  if(block_num_x%device_num != 0){
+    gridDimX++;
+  }
+
+  if(pt->pid == 0){
+    gettimeofday(&tv_kernel_start, NULL);
+  }
+
+  switch(pt->calc_flag) {  
+  case ROOT: 
+    res = cuLaunchKernel(
+                         func_process_root[pt->pid], // call function
+                         gridDimX,                   // gridDimX
+                         block_num_y,                // gridDimY
+                         (pt->L_MAX)*(pt->len),      // gridDimZ
+                         thread_num_x,               // blockDimX
+                         thread_num_y,               // blockDimY
+                         1,                          // blockDimZ
+                         sharedMemBytes,             // sharedMemBytes
+                         NULL,                       // hStream
+                         kernel_args,                // kernelParams
+                         NULL                        // extra
+                         );
+    if(res != CUDA_SUCCESS){
+      printf("cuLaunchKernel(root) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+    break;
+
+  case PART: 
+    res = cuLaunchKernel(
+                         func_process_part[pt->pid], // call function
+                         gridDimX,                   // gridDimX
+                         block_num_y,                // gridDimY
+                         (pt->L_MAX)*(pt->len),      // gridDimZ
+                         thread_num_x,               // blockDimX
+                         thread_num_y,               // blockDimY
+                         1,                          // blockDimZ
+                         sharedMemBytes,             // sharedMemBytes
+                         NULL,                       // hStream
+                         kernel_args,                // kernelParams
+                         NULL                        // extra
+                         );
+    if(res != CUDA_SUCCESS){
+      printf("cuLaunchKernel(part) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+    break;
+
+  default:
+    printf("NOT DEFINED value: calc_flag = %d\n", pt->calc_flag);
+    exit(1);
+    break;
+  }
+
+  /* synchronize GPU threads */
+  res = cuCtxSynchronize();
+  if(res != CUDA_SUCCESS){
+    printf("cuCtxSynchronize(process) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  if(pt->pid == 0){
+    gettimeofday(&tv_kernel_end, NULL);
+    tvsub(&tv_kernel_end, &tv_kernel_start, &tv);
+    time_kernel += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+  }
+
+
+  /* download C from GPU */
+  if(pt->pid == 0){
+    gettimeofday(&tv_memcpy_start, NULL);
+  }
+
+    int C_dims0 = 0;
+    int C_dims1 = 0;
+    int C_x = 0;
+    size_t x_size = 0;
+    int ii = 0;
+    int lev = 0;
+    int error_flag = 0;
+    unsigned long long int pointer_C = (unsigned long long int)pt->dst_C;
+    unsigned long long int root_pointer_dev = (unsigned long long int)part_root_C_dev;
+    unsigned long long int part_pointer_dev = (unsigned long long int)part_part_C_dev;
+
+  switch(pt->calc_flag) { 
+  case ROOT:
+    for(int lev = pt->interval; lev < pt->L_MAX; lev++){
+
+      /* loop condition */
+      for(int k = 0; k < pt->error_array_num; k++){
+        if(pt->error_array[k] == lev)
+          error_flag = 1;
+        }
+
+      for(int ii = 0; ii < pt->len; ii++){
+
+        if(error_flag == 1) {
+          error_flag = 0;
+          break;
+        }
+
+        C_dims0 = pt->A_SIZE[lev*3] - pt->B_dimension[ii*3] + 1;
+        C_dims1 = pt->A_SIZE[lev*3+1] - pt->B_dimension[ii*3+1] + 1;
+
+        if(C_dims0 < 1 || C_dims1 < 1) continue;
+
+        C_x = C_dims1 / device_num;
+
+        if(C_dims1 % device_num != 0){
+          C_x++;
+        }
+
+
+        if(pt->pid*C_x + C_x > C_dims1)
+          x_size = (C_dims1-pt->pid*C_x)*C_dims0*sizeof(FLOAT);
+        else
+          x_size = C_x*C_dims0*sizeof(FLOAT);
+
+
+        res = cuMemcpyDtoH((void *)(pointer_C+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), (CUdeviceptr)(root_pointer_dev+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), x_size);
+        if(res != CUDA_SUCCESS) {
+          printf("cuMemcpyDtoH(dst_C root) failed: res = %s\n", conv(res));
+          exit(1);
+        }
+               
+        pointer_C += (unsigned long long int)(C_dims0 * C_dims1 * sizeof(FLOAT));
+        root_pointer_dev += (unsigned long long int)(C_dims0 * C_dims1 * sizeof(FLOAT));
+
+      }
+
+    }
+
+    if(pt->pid == 0){
+      gettimeofday(&tv_memcpy_end, NULL);
+      tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+      time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+    }
+
+    res = cuMemFree(part_root_C_dev);
+    if(res != CUDA_SUCCESS){
+      printf("cuMemFree(part_root_C_dev) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+
+    res = cuMemFree(part_root_error_array_dev);
+    if(res != CUDA_SUCCESS){
+      printf("cuMemFree(part_part_C_dev) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+    break;
+
+  case PART:
+
+    for(int lev = 0; lev < (pt->L_MAX-pt->interval); lev++){
+
+      for(int k = 0; k < part_error_array_num; k++){
+        if(pt->error_array[k] == lev)
+          error_flag = 1;
+        }
+
+      for(int ii = 0; ii < pt->len; ii++){
+
+        if(error_flag == 1) {
+          error_flag = 0;
+          break;
+        }
+
+        C_dims0 = pt->A_SIZE[lev*3] - pt->B_dimension[ii*3] + 1;
+        C_dims1 = pt->A_SIZE[lev*3+1] - pt->B_dimension[ii*3+1] + 1;
+
+        if(C_dims0 < 1 || C_dims1 < 1) continue;
+
+        C_x = C_dims1 / device_num;
+
+        if(C_dims1 % device_num != 0){
+          C_x++;
+        }
+
+        if(pt->pid*C_x + C_x > C_dims1)
+          x_size = (C_dims1-pt->pid*C_x)*C_dims0*sizeof(FLOAT);
+        else
+          x_size = C_x*C_dims0*sizeof(FLOAT);
+
+
+        res = cuMemcpyDtoH((void *)(pointer_C+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), (CUdeviceptr)(part_pointer_dev+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), x_size);
+        if(res != CUDA_SUCCESS) {
+          printf("cuMemcpyDtoH(dst_C root) failed: res = %s\n", conv(res));
+          exit(1);
+        }        
+               
+        pointer_C += (unsigned long long int)(C_dims0 * C_dims1 * sizeof(FLOAT));
+        part_pointer_dev += (unsigned long long int)(C_dims0 * C_dims1 * sizeof(FLOAT));
+
+      }
+
+    }
+
+    if(pt->pid == 0){
+      gettimeofday(&tv_memcpy_end, NULL);
+      tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
+      time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+    }
+
+    
+    res = cuMemFree(part_part_C_dev);
+    if(res != CUDA_SUCCESS){
+      printf("cuMemFree(part_part_C_dev) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+
+    res = cuMemFree(part_part_error_array_dev);
+    if(res != CUDA_SUCCESS){
+      printf("cuMemFree(part_part_C_dev) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+    
+    break;
+
+  default:
+    printf("NOT DEFINED value: calc_flag = %d\n", pt->calc_flag);
+    exit(1);
+    break;
+    
+  }
+
+
+  /* free GPU memory */
+  res = cuMemFree(B_dims_dev);
+  if(res != CUDA_SUCCESS){
+    printf("cuMemFree(B_dims_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+    
+  res = cuMemFree(B_dev);
+  if(res != CUDA_SUCCESS){
+    printf("cuMemFree(B_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemFree(featp2_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(featp2_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemFree(A_SIZE_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(new_PADsize_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+  /* end of thread */
+  CUT_THREADEND;
+
+
+}
+
+
+
+
 
 FLOAT ***fconvsMT_GPU(
-  CUdeviceptr featp2_dev,
+  FLOAT **featp2,
+  size_t SUM_SIZE_feat,
   FLOAT **filter,
   int *sym_info,
   int start,
   int end,
   int *A_SIZE,
-  CUdeviceptr A_SIZE_dev,
   int **B_SIZE,
   int **M_size_array,
   int L_MAX,
@@ -37,6 +587,14 @@ FLOAT ***fconvsMT_GPU(
   int calc_flag
                       )
 {
+
+  fconvs_partition *p = (fconvs_partition *)malloc(device_num*sizeof(fconvs_partition));
+
+  for(int i = 0; i < device_num; i++){
+    p[i].max_height = 0;
+    p[i].max_width = 0;
+  }
+
   start=start-1;
   end=end-1;
   
@@ -52,27 +610,22 @@ FLOAT ***fconvsMT_GPU(
     td[i] = (thread_data *)ptr_td;
     ptr_td += (unsigned long long int)(len*sizeof(thread_data));
   }
-  
-  
-  int max_height=0, max_width=0;  
+   
   
   CUresult res;
   
-  int thread_num_x, thread_num_y, block_num_x, block_num_y;
   CUdeviceptr B_dims_dev;
   
-  int *B_dimension = (int*)malloc(3*len*sizeof(int));
-  
-  CUdeviceptr B_dev;
-  //  CUdeviceptr C_dev;  
+  int *B_dimension = (int*)malloc(3*len*sizeof(int)); 
   
   size_t SUM_SIZE_B = 0;
-  size_t SUM_SIZE_C = 0;
-  
+
+  SUM_SIZE_C = 0;
+
   /* array in order to apply loop condition to kernel */
-  int error_array_num = 0;  
+  int error_array_num = 0;
+
   int *error_array;
-  //  CUdeviceptr error_array_dev;
 
   /**********************************************************************/
   /* prepare output region */
@@ -98,22 +651,22 @@ FLOAT ***fconvsMT_GPU(
   /* prepare output region */
   /**********************************************************************/
   
-  
+
   
   /* prepare for launch kernel */
   for(int ii=0;ii<len;ii++)  // filter's loop(B's loop) 
-    {
+    {    
       /* store B dimendion in B_dimension */
       B_dimension[ii*3] = B_SIZE[ii][0];
       B_dimension[ii*3 + 1] = B_SIZE[ii][1];
       B_dimension[ii*3 + 2] = 31;
       
-      
+       
       SUM_SIZE_B += B_dimension[ii*3]*B_dimension[ii*3 + 1]*B_dimension[ii*3 + 2]*sizeof(FLOAT);
       
     }  //for(len)
-  
-  
+      
+
   for(int level=interval; level<L_MAX; level++) {
     
     int L = level - interval;
@@ -150,8 +703,10 @@ FLOAT ***fconvsMT_GPU(
 
       
       /* search max height and max width */
-      max_height = (max_height < height) ? height : max_height;
-      max_width = (max_width < width) ? width : max_width;
+      for(int i = 0; i < device_num; i++){
+        p[i].max_height = (p[i].max_height < height) ? height : p[i].max_height;
+        p[i].max_width = (p[i].max_width < width) ? width : p[i].max_width;
+      }
       
       
       if (height < 1 || width < 1)
@@ -192,15 +747,18 @@ FLOAT ***fconvsMT_GPU(
     }
   }
   
-  
   /* save loop condition */
-  res = cuMemHostAlloc((void **)&error_array, error_array_num*sizeof(int), CU_MEMHOSTALLOC_DEVICEMAP);
+  res = cuMemHostAlloc((void **)&(error_array), error_array_num*sizeof(int), CU_MEMHOSTALLOC_DEVICEMAP);
   if(res != CUDA_SUCCESS) {
     printf("cuMemHostAlloc(error_array) failed: res = %s\n", conv(res));
     exit(1);
   }
   
   int hh=0;
+
+  if(calc_flag == PART){
+    part_error_array = (int *)malloc(error_array_num*sizeof(int));
+  }
 
   for(int level=interval; level<L_MAX; level++) {
     int L = level - interval;
@@ -213,7 +771,7 @@ FLOAT ***fconvsMT_GPU(
         error_array[hh] = level;
         break;
       case PART:
-        
+        part_error_array[hh] = L;
         error_array[hh] = L;
         break;
         
@@ -231,134 +789,10 @@ FLOAT ***fconvsMT_GPU(
       }
     }
   }
-  
-
-
-  /* define CUDA block shape */
-  int max_threads_num = 0;
-  res = cuDeviceGetAttribute(&max_threads_num, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, dev);
-  if(res != CUDA_SUCCESS){
-    printf("\ncuDeviceGetAttribute() failed: res = %s\n", conv(res));
-    exit(1);
-  }
-
-
-  /* calculate max size of each block dimension */
-  // switch(calc_flag) {
-  // case ROOT:
-  //   NR_MAXTHREADS_X = (int)sqrt((FLOAT)max_threads_num/len);
-  //   NR_MAXTHREADS_Y = (int)sqrt((FLOAT)max_threads_num/len);
-  //   if(NR_MAXTHREADS_X < 1) NR_MAXTHREADS_X++;
-  //   if(NR_MAXTHREADS_Y < 1) NR_MAXTHREADS_Y++;
-  //   break;
-  // case PART:
-  //    NR_MAXTHREADS_X = (int)sqrt((FLOAT)max_threads_num/len);
-  //    NR_MAXTHREADS_Y = (int)sqrt((FLOAT)max_threads_num/len);
-  //   // NR_MAXTHREADS_X = 2;//(int)sqrt((FLOAT)max_threads_num/len);
-  //   // NR_MAXTHREADS_Y = 2;//(int)sqrt((FLOAT)max_threads_num/len);
-
-  //   if(NR_MAXTHREADS_X < 1) NR_MAXTHREADS_X++;
-  //   if(NR_MAXTHREADS_Y < 1) NR_MAXTHREADS_Y++;
-  //   break;
-  // default:
-  //   printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
-  //   exit(1);
-  //   break;
-  // }
-
-  NR_MAXTHREADS_X = (int)sqrt((FLOAT)max_threads_num/len);
-  NR_MAXTHREADS_Y = (int)sqrt((FLOAT)max_threads_num/len);
-  if(NR_MAXTHREADS_X < 1) NR_MAXTHREADS_X++;
-  if(NR_MAXTHREADS_Y < 1) NR_MAXTHREADS_Y++;
-  
-  thread_num_x = (max_width < NR_MAXTHREADS_X) ? max_width : NR_MAXTHREADS_X;
-  thread_num_y = (max_height < NR_MAXTHREADS_Y) ? max_height : NR_MAXTHREADS_Y;
-  
-  block_num_x = max_width / thread_num_x;
-  block_num_y = max_height / thread_num_y;
-  if(max_width % thread_num_x != 0) block_num_x++;
-  if(max_height % thread_num_y != 0) block_num_y++;
-
-  /* allocate GPU memory */
-  res = cuMemAlloc(&B_dev, SUM_SIZE_B);
-  if(res != CUDA_SUCCESS){
-    printf("cuMemAlloc(B_dev) failed: res = %s\n", conv(res));
-    exit(1);
-  }
-
-
-  res = cuMemAlloc(&B_dims_dev, 3*len*sizeof(int));
-  if(res != CUDA_SUCCESS){
-    printf("cuMemAlloc(B_dims) failed: res = %s\n", conv(res));
-    exit(1);
-  }
-
-
-  switch(calc_flag) {
-  case ROOT:
-    res = cuMemAlloc(&root_error_array_dev, error_array_num*sizeof(int));
-    if(res != CUDA_SUCCESS){
-      printf("cuMemAlloc(root_error_array_dev) failed: res = %s\n", conv(res));
-    exit(1);
-    }
-    break;
-
-  case PART:
-    res = cuMemAlloc(&part_error_array_dev, error_array_num*sizeof(int));
-    if(res != CUDA_SUCCESS){
-      printf("cuMemAlloc(part_array_dev) failed: res = %s\n", conv(res));
-    exit(1);
-    }
-    part_error_array_num = error_array_num;
-    break;
-
-  default:
-    printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
-    exit(1);
-    break;
-    
-  }
-
-  /* upload data to GPU memory */
-  gettimeofday(&tv_memcpy_start, NULL);
-  /* upload filter */
-  res = cuMemcpyHtoD(B_dev, filter[start], SUM_SIZE_B);
-  if(res != CUDA_SUCCESS){
-    printf("cuMemcpyHtoD(B_dev) failed: res = %s\n", conv(res));
-    exit(1);
-  }
-  
-  switch(calc_flag) {
-  case ROOT:
-    res = cuMemcpyHtoD(root_error_array_dev, error_array, error_array_num*sizeof(int));
-    if(res != CUDA_SUCCESS) {
-      printf("cuMemcpyHtoD(root_error_array_dev) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-    break;
-    
-  case PART:
-    res = cuMemcpyHtoD(part_error_array_dev, error_array, error_array_num*sizeof(int));
-    if(res != CUDA_SUCCESS) {
-      printf("cuMemcpyHtoD(part_error_array_dev) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-    break;
-    
-  default:
-    printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
-    exit(1);
-    break;
-    
-  }
-  gettimeofday(&tv_memcpy_end, NULL);
-  tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
-  time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
 
   /* allocate output region on CPU memory */
-  FLOAT *dst_C;
-  res = cuMemHostAlloc((void **)&dst_C, SUM_SIZE_C, CU_MEMHOSTALLOC_DEVICEMAP);
+  res = cuMemHostAlloc((void **)&(dst_C), SUM_SIZE_C, CU_MEMHOSTALLOC_DEVICEMAP);
   if(res != CUDA_SUCCESS){
     printf("cuMemHostAlloc(dst_C) failed: res = %s\n", conv(res));
     exit(1);
@@ -393,91 +827,43 @@ FLOAT ***fconvsMT_GPU(
     }
   }
 
-  /* allocate output region on GPU memory and upload date to GPU*/
-  switch(calc_flag) {
-  case ROOT:
-    res = cuMemAlloc(&root_C_dev, SUM_SIZE_C);
-    if(res != CUDA_SUCCESS) {
-      printf("cuMemAlloc(root_C_dev) failed: res = %s\n", conv(res));
-      exit(1);
-    }
+  /* start threads */
 
-    gettimeofday(&tv_memcpy_start, NULL);
-    res = cuMemcpyHtoD(root_C_dev, dst_C, SUM_SIZE_C);
-    if(res != CUDA_SUCCESS) {
-      printf("cuMemcpyHtoD(root_C_dev) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-    gettimeofday(&tv_memcpy_end, NULL);
-    tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
-    time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+  CUTThread* threads = (CUTThread *)malloc(sizeof(CUTThread) * device_num);
 
-    break;
+  for(int i = 0; i < device_num; i++){
+    p[i].featp2 = featp2;
+    p[i].SUM_SIZE_feat = SUM_SIZE_feat;
+    p[i].A_SIZE = A_SIZE;
+    p[i].SUM_SIZE_B = SUM_SIZE_B;
+    p[i].SUM_SIZE_C = SUM_SIZE_C;
+    p[i].dst_C = dst_C;
+    p[i].filter = filter;
+    p[i].len = len;
+    p[i].calc_flag = calc_flag;
+    p[i].error_array_num = error_array_num;
+    p[i].start = start;
+    p[i].error_array = error_array;
+    p[i].B_dimension = B_dimension;
+    p[i].interval = interval;
+    p[i].L_MAX = L_MAX;
+    p[i].pid = i;
+    threads[i] = cutStartThread((CUT_THREADROUTINE)fconvs_thread_func, (void *)&p[i]);
 
-  case PART:
-    res = cuMemAlloc(&part_C_dev, SUM_SIZE_C);
-    if(res != CUDA_SUCCESS) {
-      printf("cuMemAlloc(part_C_dev) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-
-    gettimeofday(&tv_memcpy_start, NULL);
-    res = cuMemcpyHtoD(part_C_dev, dst_C, SUM_SIZE_C);
-    if(res != CUDA_SUCCESS) {
-      printf("cuMemcpyHtoD(part_C_dev) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-    gettimeofday(&tv_memcpy_end, NULL);
-    tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
-    time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-    
-    break;
-
-  default:
-    printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
-    exit(1);
-    break;
   }
 
+  cutWaitForThreads(threads, device_num);
+
+  free(threads);
 
 
-  gettimeofday(&tv_memcpy_start, NULL);
-  res = cuMemcpyHtoD(B_dims_dev, B_dimension, 3*len*sizeof(int));
-  if(res != CUDA_SUCCESS){
-    printf("cuMemcpyHtoD(B_dims) failed: res = %s\n", conv(res));
+
+  /* free CPU memory */
+  res = cuMemFreeHost((void *)(error_array));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFreeHost(error_array) failed: res = %s\n", conv(res));
     exit(1);
   }
-  gettimeofday(&tv_memcpy_end, NULL);
-  tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
-  time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-  
-  
-
-  /* launch kernel
-     grid shape : block_num_x * block_num_y * L_MAX, 
-     block shape : thread_num_x * thread_num_y * len 
-  */              
-  /* dealing with 1 feature(A) by 1 z_dimension of grid */
-  /* dealing with 1 model(B) by 1 z_dimension of block */
-
-  void *kernel_args[] = {
-    &featp2_dev,                // kernel_args[0]
-    &B_dev,                     // kernel_args[1]
-    &root_C_dev,                // kernel_args[2]
-    &A_SIZE_dev,                // kernel_args[3]
-    &B_dims_dev,                // kernel_args[4]
-    (void *)&len,               // kernel_args[5]
-    (void *)&interval,          // kernel_args[6]
-    (void *)&L_MAX,             // kernel_args[7]
-    &root_error_array_dev,      // kernel_args[8]
-    (void *)&error_array_num    // kernel_args[9]
-  };
-  
-  if(calc_flag == PART) {
-    kernel_args[2] = &part_C_dev;
-    kernel_args[8] = &part_error_array_dev;
-  }
-  int sharedMemBytes = 0;
 
 #if 0
   printf("sizeof(&feadp2_dev) %lu\n", sizeof(&featp2_dev));
@@ -554,93 +940,6 @@ FLOAT ***fconvsMT_GPU(
   printf("L_MAX %d\n", L_MAX);
 #endif
 
-  gettimeofday(&tv_kernel_start, NULL);
-  switch(calc_flag) {  
-  case ROOT: 
-    res = cuLaunchKernel(
-                         func_process_root, // call function
-                         block_num_x,       // gridDimX
-                         block_num_y,       // gridDimY
-                         L_MAX*len,         // gridDimZ
-                         thread_num_x,      // blockDimX
-                         thread_num_y,      // blockDimY
-                         1,                 // blockDimZ
-                         sharedMemBytes,    // sharedMemBytes
-                         NULL,              // hStream
-                         kernel_args,       // kernelParams
-                         NULL               // extra
-                         );
-    if(res != CUDA_SUCCESS){
-      printf("cuLaunchKernel(root) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-    break;
-  case PART: 
-    res = cuLaunchKernel(
-                         func_process_part, // call function
-                         block_num_x,       // gridDimX
-                         block_num_y,       // gridDimY
-                         L_MAX*len,         // gridDimZ
-                         thread_num_x,      // blockDimX
-                         thread_num_y,      // blockDimY
-                         1,                 // blockDimZ
-                         sharedMemBytes,    // sharedMemBytes
-                         NULL,              // hStream
-                         kernel_args,       // kernelParams
-                         NULL               // extra
-                         );
-    if(res != CUDA_SUCCESS){
-      printf("cuLaunchKernel(part) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-    break;
-  default:
-    printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
-    exit(1);
-    break;
-  }
-
-
-  /* synchronize GPU threads */
-  res = cuCtxSynchronize();
-  if(res != CUDA_SUCCESS){
-    printf("cuCtxSynchronize(process) failed: res = %s\n", conv(res));
-    exit(1);
-  }
-  gettimeofday(&tv_kernel_end, NULL);
-  tvsub(&tv_kernel_end, &tv_kernel_start, &tv);
-  time_kernel += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-
-
-  /* download C from GPU */
-  gettimeofday(&tv_memcpy_start, NULL);
-  switch(calc_flag) { 
-  case ROOT: 
-    res = cuMemcpyDtoH((void *)dst_C, root_C_dev, SUM_SIZE_C);
-    if(res != CUDA_SUCCESS) {
-      printf("cuMemcpyDtoH(dst_C root) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-    break;
-
-  case PART:
-    res = cuMemcpyDtoH((void *)dst_C, part_C_dev, SUM_SIZE_C);
-    if(res != CUDA_SUCCESS) {
-      printf("cuMemcpyDtoH(dst_C part) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-    break;
-
-  default:
-    printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
-    exit(1);
-    break;
-    
-  }
-  gettimeofday(&tv_memcpy_end, NULL);
-  tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
-  time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-  
 
   /* close handle and get output */
   for(int level=interval; level<L_MAX; level++) {
@@ -673,34 +972,10 @@ FLOAT ***fconvsMT_GPU(
     }
   }
   
-
-  
-  /* free GPU memory */
-  res = cuMemFree(B_dims_dev);
-  if(res != CUDA_SUCCESS){
-    printf("cuMemFree(B_dims_dev) failed: res = %s\n", conv(res));
-    exit(1);
-  }
-  
-  
-  res = cuMemFree(B_dev);
-  if(res != CUDA_SUCCESS){
-    printf("cuMemFree(B_dev) failed: res = %s\n", conv(res));
-    exit(1);
-  }
-  
-  /* free CPU memory */
-  res = cuMemFreeHost((void *)error_array);
-  if(res != CUDA_SUCCESS) {
-    printf("cuMemFreeHost(error_array) failed: res = %s\n", conv(res));
-    exit(1);
-  }
-  
   s_free(B_dimension);
   s_free(td[0]);	  
-  s_free(td);	
-
-
+  s_free(td);
+  free(p);	
   return(Output);
   
 }

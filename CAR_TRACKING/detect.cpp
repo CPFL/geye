@@ -77,6 +77,8 @@ RESULT *car_detection(IplImage *IM,MODEL *MO,FLOAT thresh,int *D_NUMS,FLOAT *A_S
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+
+
 //resize Image (IplImage)
 IplImage *ipl_resize(IplImage *IM,FLOAT ratio)
 {
@@ -154,10 +156,10 @@ FLOAT *detect(IplImage *IM,MODEL *MO,FLOAT thresh,int *D_NUMS,FLOAT *A_SCORE)
   float time_ini_scales;
   struct timeval tv_ini_feat_size_start, tv_ini_feat_size_end;
   float time_ini_feat_size;
-  struct timeval tv_calc_f_pyramid_start, tv_calc_f_pyramid_end;
-  float time_calc_f_pyramid;
   struct timeval tv_get_boxes_start, tv_get_boxes_end;
   float time_get_boxes;
+  struct timeval tv_calc_f_pyramid_start, tv_calc_f_pyramid_end;
+  float time_calc_f_pyramid = 0;
   
   
   //for time measurement
@@ -181,9 +183,9 @@ FLOAT *detect(IplImage *IM,MODEL *MO,FLOAT thresh,int *D_NUMS,FLOAT *A_SCORE)
   tvsub(&tv_calc_f_pyramid_end, &tv_calc_f_pyramid_start, &tv);
 
   time_kernel += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-
+  time_calc_f_pyramid += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
   printf("\n");
-  printf("calc_f_pyramid %f[ms]\n", tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0);
+  printf("calc_f_pyramid %f[ms]\n", time_calc_f_pyramid);
 
   t2=clock();
 
