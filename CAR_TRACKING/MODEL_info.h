@@ -56,11 +56,14 @@
 //#define EX_NAME			".bmp"
 
 //#define F_NAME_COM		"car_comp.csv"			//file name (component)
-#define F_NAME_COM		"./CAR_TRACKING/car_comp.csv"			//file name (component)
+//#define F_NAME_COM		"./CAR_TRACKING/car_comp.csv"			//file name (component)
+#define F_NAME_COM		"./CAR_TRACKING/person_comp.csv"			//file name (component)
 //#define F_NAME_ROOT		"car_root.csv"			//file name (root_filter)
-#define F_NAME_ROOT		"./CAR_TRACKING/car_root.csv"			//file name (root_filter)
+//#define F_NAME_ROOT		"./CAR_TRACKING/car_root.csv"			//file name (root_filter)
+#define F_NAME_ROOT		"./CAR_TRACKING/person_root.csv"			//file name (root_filter)
 //#define F_NAME_PART		"car_part.csv"			//file name (part_filter)
-#define F_NAME_PART		"./CAR_TRACKING/car_part.csv"			//file name (part_filter)
+//#define F_NAME_PART		"./CAR_TRACKING/car_part.csv"			//file name (part_filter)
+#define F_NAME_PART		"./CAR_TRACKING/person_part.csv"			//file name (part_filter)
 
 ///////////////////////
 //struct information///

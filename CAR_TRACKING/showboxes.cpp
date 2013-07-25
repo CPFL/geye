@@ -300,7 +300,8 @@ void show_rects(IplImage *Image,RESULT *CUR,FLOAT ratio)
                       P[1],               // int upper
                       P[2],               // int right
                       P[3],               // int bottom
-                      CAR                 // int type
+                      //                      CAR                 // int type
+                      PEDESTRIAN // int type
                       );
       My_sem_operation(semid, UNLOCK);  // unlock semaphore
 
@@ -890,7 +891,9 @@ IplImage *load_suc_image(int fnum)
   return(cvLoadImage(pass,CV_LOAD_IMAGE_COLOR));
 #else
 
+  /*****************************************************/
   // generate key
+  /*****************************************************/
   key_t shm_key = ftok(INPUT_SHM_PATH, 1);
   if(shm_key == -1) {
     printf("key generation for input_SHM is failed\n");
@@ -913,7 +916,15 @@ IplImage *load_suc_image(int fnum)
     printf("key generation for semaphore is failed\n");
   }
 
+  // generation key for reader-writer lock
+  key_t shm_key_rwlock = ftok(RWLOCK_SHM_PATH, 1);
+  if(shm_key_rwlock == -1) {
+    printf("key generation for reader-writer lock failed\n");
+  }
+
+  /*****************************************************/
   // access to the shared memory
+  /*****************************************************/
   int shrd_id = shmget(shm_key, IMAGE_SIZE, 0666);
   if(shrd_id < 0) {
     printf("Can't Access to the Shared Memory!! \n");
@@ -936,9 +947,17 @@ IplImage *load_suc_image(int fnum)
     printf("Can't Access to the semaphore\n");
   }
 
+  // open reader-writer lock
+  int shrd_id_rwlock = shmget(shm_key_rwlock, sizeof(pthread_rwlock_t), 0666);
+
+
   unsigned char *shrd_ptr = (unsigned char*)shmat(shrd_id, NULL, 0);
   int *shrd_ptr_height = (int*)shmat(shrd_id_height, NULL, 0);
   int *shrd_ptr_width = (int*)shmat(shrd_id_width, NULL, 0);
+
+  // attach reader-writer lock
+  pthread_rwlock_t *shrd_ptr_rwlock = (pthread_rwlock_t *)shmat(shrd_id_rwlock, NULL, 0);
+
   
 #if 0
   //  IplImage *image = cvCreateImage(cvSize(640, 480), IPL_DEPTH_8U, 3);
@@ -959,10 +978,19 @@ IplImage *load_suc_image(int fnum)
   /* read image from buffer */
   CvMat *buf = cvCreateMat(1, IMAGE_SIZE, CV_8UC3);
   
-  My_sem_operation(semid, LOCK); // lock semaphore
+//  My_sem_operation(semid, LOCK); // lock semaphore
+  int rtn = pthread_rwlock_rdlock(shrd_ptr_rwlock); // lock reader-writer lock as reader
+  if(rtn != 0) {
+    printf("pthread_rwlock_rdlock failed...\n");
+  }
   //buf->data.ptr = shrd_ptr;
   memcpy(buf->data.ptr, shrd_ptr, IMAGE_SIZE);
-  My_sem_operation(semid, UNLOCK); // unlock semaphore
+  rtn = pthread_rwlock_unlock(shrd_ptr_rwlock); // unlock reader-writer lock
+  if(rtn != 0) {
+    printf("pthread_rwlock_unlock failed...\n");
+  }
+
+//  My_sem_operation(semid, UNLOCK); // unlock semaphore
 
 
   IplImage *image = cvDecodeImage(buf, CV_LOAD_IMAGE_COLOR);  // absorb the difference of file format
