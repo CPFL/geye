@@ -17,8 +17,8 @@ Debug_Library_Path= -L/usr/local/lib -L$(CUDA_LIB)
 Release_Library_Path= -L/usr/local/lib -L$(CUDA_LIB)
 
 # Additional libraries...
-Debug_Libraries=-Wl,--start-group   -Wl,--end-group -lopencv_calib3d -lopencv_contrib -lopencv_core -lopencv_features2d -lopencv_flann -lopencv_gpu -lopencv_highgui -lopencv_imgproc -lopencv_legacy -lopencv_ml -lopencv_nonfree -lopencv_objdetect -lopencv_photo -lopencv_stitching -lopencv_ts -lopencv_video -lopencv_videostab -lcuda -lm
-Release_Libraries = -Wl,--start-group   -Wl,--end-group -lopencv_calib3d -lopencv_contrib -lopencv_core -lopencv_features2d -lopencv_flann -lopencv_gpu -lopencv_highgui -lopencv_imgproc -lopencv_legacy -lopencv_ml -lopencv_nonfree -lopencv_objdetect -lopencv_photo -lopencv_stitching -lopencv_ts -lopencv_video -lopencv_videostab -lstdc++ -lcuda -lm
+Debug_Libraries=-Wl,--start-group   -Wl,--end-group -lopencv_calib3d -lopencv_contrib -lopencv_core -lopencv_features2d -lopencv_flann -lopencv_gpu -lopencv_highgui -lopencv_imgproc -lopencv_legacy -lopencv_ml -lopencv_nonfree -lopencv_objdetect -lopencv_photo -lopencv_stitching -lopencv_ts -lopencv_video -lopencv_videostab -lcuda -lm -lpthread -lstdc++
+Release_Libraries = -Wl,--start-group   -Wl,--end-group -lopencv_calib3d -lopencv_contrib -lopencv_core -lopencv_features2d -lopencv_flann -lopencv_gpu -lopencv_highgui -lopencv_imgproc -lopencv_legacy -lopencv_ml -lopencv_nonfree -lopencv_objdetect -lopencv_photo -lopencv_stitching -lopencv_ts -lopencv_video -lopencv_videostab -lstdc++ -lcuda -lm -lpthread -lstdc++
 
 # Preprocessor definitions...
 Debug_Preprocessor_Definitions=-D GCC_BUILD -D _DEBUG -D _CONSOLE 
