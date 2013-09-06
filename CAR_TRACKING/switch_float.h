@@ -1,6 +1,6 @@
 /* typedef to switch float and double */
-typedef float FLOAT;
-//typedef double FLOAT;
+//typedef float FLOAT;
+typedef double FLOAT;
 
 #ifndef TVSUB
 #define TVSUB

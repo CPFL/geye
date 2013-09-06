@@ -50,7 +50,7 @@ FLOAT *partbox(int x,int y,int ax,int ay,FLOAT scale,int padx,int pady,int *psiz
 
 //calculate accumulated HOG detector score
 //void calc_a_score(FLOAT *ac_score,FLOAT *score,int *ssize,int *rsize,Model_info *MI,FLOAT scale);
-void calc_a_score_GPU(FLOAT *ac_score, FLOAT **score, int *ssize_start, Model_info *MI, FLOAT scale, int *size_score_array, int NoC);
+void calc_a_score_GPU(FLOAT *ac_score, FLOAT ***score, int **ssize_start, Model_info *MI, FLOAT scale, int **size_score_array, int NoC,  int *FSIZE, int interval, int L_MAX);
 
 //Object-detection function (extended to main)
 FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,FLOAT *A_SCORE,FLOAT thresh);
@@ -304,14 +304,20 @@ extern size_t size_A_SCORE;
 
 void calc_a_score_GPU(
   FLOAT *ac_score,
-  FLOAT **score,
+  FLOAT *score,
   int *ssize_start,
   Model_info *MI,
-  FLOAT scale, 
+  FLOAT *scale_array, 
   int *size_score_array,
-  int NoC
+  int NoC,
+  int *FSIZE,
+  int interval,
+  int L_MAX,
+  int sum_RL_S
                       )
 {
+
+
   CUresult res;
 
   const int L_AS = MI->IM_HEIGHT*MI->IM_WIDTH;
@@ -320,39 +326,61 @@ void calc_a_score_GPU(
   FLOAT sbin = (FLOAT)(MI->sbin);
   int pady_n = MI->pady;
   int padx_n = MI->padx;
-  int block_pad = (int)(scale/2.0);
+  int max_Y_n = MI->max_Y;
+  int max_X_n = MI->max_X;
 
   struct timeval tv;  
 
   int *RY_array, *RX_array;
-  res = cuMemHostAlloc((void**)&RY_array, NoC*sizeof(int), CU_MEMHOSTALLOC_DEVICEMAP);
+  res = cuMemHostAlloc((void**)&RY_array, (L_MAX-interval)*NoC*sizeof(int), CU_MEMHOSTALLOC_DEVICEMAP);
   if(res != CUDA_SUCCESS) {
     printf("cuMemHostAlloc(RY_array) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-  res = cuMemHostAlloc((void**)&RX_array, NoC*sizeof(int), CU_MEMHOSTALLOC_DEVICEMAP);
+  res = cuMemHostAlloc((void**)&RX_array, (L_MAX-interval)*NoC*sizeof(int), CU_MEMHOSTALLOC_DEVICEMAP);
   if(res != CUDA_SUCCESS) {
     printf("cuMemHostAlloc(RX_array) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-  for(int jj=0; jj<NoC; jj++) {
-    int rsize[2] = {MI->rsize[jj*2], MI->rsize[jj*2+1]};
-    
-    RY_array[jj] = (int)((FLOAT)rsize[0]*scale/2.0-1.0+block_pad);
-    RX_array[jj] = (int)((FLOAT)rsize[1]*scale/2.0-1.0+block_pad);
+
+  for(int level=interval; level<L_MAX; level++){
+
+    if(FSIZE[level*2]+2*pady_n<max_Y_n ||(FSIZE[level*2+1]+2*padx_n<max_X_n))
+      continue;
+
+    int block_pad = (int)(scale_array[level-interval]/2.0);
+
+    for(int jj=0; jj<NoC; jj++) {
+
+      int rsize[2] = {MI->rsize[jj*2], MI->rsize[jj*2+1]};
+      RY_array[(level-interval)*NoC+jj] = (int)((FLOAT)rsize[0]*scale_array[level-interval]/2.0-1.0+block_pad);
+      RX_array[(level-interval)*NoC+jj] = (int)((FLOAT)rsize[1]*scale_array[level-interval]/2.0-1.0+block_pad);
+
+    }
   }
   
   CUdeviceptr ac_score_dev, score_dev;
   CUdeviceptr ssize_dev, size_score_dev;
   CUdeviceptr RY_dev, RX_dev;
+  CUdeviceptr FSIZE_dev;
+  CUdeviceptr scale_dev;
+  int size_score = 0;
 
+  for(int level = interval; level < L_MAX; level++){
 
-  int size_score=0;
-  for(int jj=0; jj<NoC; jj++) {
-    size_score += size_score_array[jj];
+    if(FSIZE[level*2]+2*pady_n<max_Y_n ||(FSIZE[level*2+1]+2*padx_n<max_X_n))
+      continue;
+
+    for(int jj=0; jj<NoC; jj++) {
+
+      size_score += size_score_array[(level-interval)*NoC+jj];
+
+    }
   }
+
+
 
   /* allocate GPU memory */
   res = cuMemAlloc(&ac_score_dev, size_A_SCORE);
@@ -367,32 +395,45 @@ void calc_a_score_GPU(
     exit(1);
   }
 
-  res = cuMemAlloc(&ssize_dev, NoC*sizeof(int));
+  res = cuMemAlloc(&ssize_dev, L_MAX*NoC*sizeof(int));
   if(res != CUDA_SUCCESS) {
     printf("cuMemAlloc(ssize) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-  res = cuMemAlloc(&size_score_dev, NoC*sizeof(int));
+  res = cuMemAlloc(&size_score_dev, (L_MAX-interval)*NoC*sizeof(int));
   if(res != CUDA_SUCCESS) {
     printf("cuMemAlloc(size_score) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-  res = cuMemAlloc(&RY_dev, NoC*sizeof(int));
-  if(res != CUDA_SUCCESS) {
-    printf("cuMemAlloc(RY) failed: res = %s\n", conv(res));
-    exit(1);
-  }
-
-  res = cuMemAlloc(&RX_dev, NoC*sizeof(int));
+  res = cuMemAlloc(&RX_dev, (L_MAX-interval)*NoC*sizeof(int));
   if(res != CUDA_SUCCESS) {
     printf("cuMemAlloc(RX) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-  gettimeofday(&tv_memcpy_start, NULL);
+  res = cuMemAlloc(&RY_dev, (L_MAX-interval)*NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(RY) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemAlloc(&FSIZE_dev, (L_MAX*2+2)*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(FSIZE) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemAlloc(&scale_dev, (L_MAX-interval)*sizeof(FLOAT));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(FSIZE) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+
   /* upload date to GPU */
+  gettimeofday(&tv_memcpy_start, NULL);
   res = cuMemcpyHtoD(ac_score_dev, ac_score, size_A_SCORE);
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyHtoD(ac_score) failed: res = %s\n", conv(res));
@@ -405,25 +446,37 @@ void calc_a_score_GPU(
     exit(1);
   }
 
-  res = cuMemcpyHtoD(ssize_dev, ssize_start, NoC*sizeof(int));
+  res = cuMemcpyHtoD(ssize_dev, ssize_start, L_MAX*NoC*sizeof(int));
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyHtoD(ssize) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-  res = cuMemcpyHtoD(size_score_dev, size_score_array, NoC*sizeof(int));
+  res = cuMemcpyHtoD(size_score_dev, size_score_array, (L_MAX-interval)*NoC*sizeof(int));
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyHtoD(size_score) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-  res = cuMemcpyHtoD(RY_dev, RY_array, NoC*sizeof(int));
+  res = cuMemcpyHtoD(RY_dev, RY_array, (L_MAX-interval)*NoC*sizeof(int));
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyHtoD(RY) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-  res = cuMemcpyHtoD(RX_dev, RX_array, NoC*sizeof(int));
+  res = cuMemcpyHtoD(RX_dev, RX_array, (L_MAX-interval)*NoC*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(RX) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemcpyHtoD(FSIZE_dev, FSIZE, (L_MAX*2+2)*sizeof(int));
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(FSIZE) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemcpyHtoD(scale_dev, scale_array, (L_MAX-interval)*sizeof(FLOAT));
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyHtoD(RX) failed: res = %s\n", conv(res));
     exit(1);
@@ -437,20 +490,23 @@ void calc_a_score_GPU(
   void* kernel_args[] = {
     (void*)&IWID,
     (void*)&IHEI,
-    (void*)&scale,
     (void*)&padx_n,
     (void*)&pady_n,
+    (void*)&max_X_n,
+    (void*)&max_Y_n,
+    (void*)&L_MAX,
+    (void*)&interval,
+    (void*)&sum_RL_S,
     &RX_dev,
     &RY_dev,
     &ac_score_dev,
     &score_dev,
     &ssize_dev,
     (void*)&NoC,
-    &size_score_dev
+    &size_score_dev,
+    &FSIZE_dev,
+    &scale_dev
   };
-
-
-
 
   int sharedMemBytes = 0;
 
@@ -476,20 +532,21 @@ void calc_a_score_GPU(
   if(IWID % thread_num_x != 0) block_num_x++;
   if(IHEI % thread_num_y != 0) block_num_y++;
 
-  gettimeofday(&tv_kernel_start, NULL);
+
   /* launch GPU kernel */
+  gettimeofday(&tv_kernel_start, NULL);
   res = cuLaunchKernel(
-                       func_calc_a_score[0], // call function
-                       block_num_x,       // gridDimX
-                       block_num_y,       // gridDimY
-                       1,                 // gridDimZ
-                       thread_num_x,      // blockDimX
-                       thread_num_y,      // blockDimY
-                       NoC,               // blockDimZ
-                       sharedMemBytes,    // sharedMemBytes
-                       NULL,              // hStream
-                       kernel_args,       // kernelParams
-                       NULL               // extra
+                       func_calc_a_score[0],   // call function
+                       block_num_x,            // gridDimX
+                       block_num_y,            // gridDimY
+                       (L_MAX-interval)*NoC,   // gridDimZ
+                       thread_num_x,           // blockDimX
+                       thread_num_y,           // blockDimY
+                       1,                      // blockDimZ
+                       sharedMemBytes,         // sharedMemBytes
+                       NULL,                   // hStream
+                       kernel_args,            // kernelParams
+                       NULL                    // extra
                        );
   if(res != CUDA_SUCCESS) { 
     printf("cuLaunchKernel(calc_a_score) failed : res = %s\n", conv(res));
@@ -506,8 +563,9 @@ void calc_a_score_GPU(
   time_kernel += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
 
-  gettimeofday(&tv_memcpy_start, NULL);
+
   /* download data from GPU */
+  gettimeofday(&tv_memcpy_start, NULL);
   res = cuMemcpyDtoH(ac_score, ac_score_dev, size_A_SCORE);
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyDtoH(ac_score) failed: res = %s\n", conv(res));
@@ -516,6 +574,7 @@ void calc_a_score_GPU(
   gettimeofday(&tv_memcpy_end, NULL);
   tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
   time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+
 
 
   /* free GPU memory */
@@ -555,6 +614,19 @@ void calc_a_score_GPU(
     exit(1);
   }
 
+  res = cuMemFree(FSIZE_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(FSIZE_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+  res = cuMemFree(scale_dev);
+  if(res != CUDA_SUCCESS) {
+    printf("cuMemFree(FSIZE_dev) failed: res = %s\n", conv(res));
+    exit(1);
+  }
+
+
   /* free CPU memory */
   res = cuMemFreeHost(RY_array);
   if(res != CUDA_SUCCESS) {
@@ -566,7 +638,7 @@ void calc_a_score_GPU(
   if(res != CUDA_SUCCESS) {
     printf("cuMemFreeHost(RX_array) failed: res = %s\n", conv(res));
     exit(1);
-  } 
+  }
 
 }
 
@@ -1433,13 +1505,53 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
       }
           
 
+      /* calculate accumulated score */
+      gettimeofday(&tv_calc_a_score_start, NULL);
+ #if 0         
+      calc_a_score_GPU(
+                       A_SCORE,              // FLOAT *ac_score
+                       SCORE_array,          // FLOAT ***score
+                       rm_size_array,        // int *ssize_start
+                       MO->MI,               // Model_info *MI
+                       scale_array,          // FLOAT *scale_array
+                       RL_S_array,           // int **size_score_array
+                       NoC,                  // int NoC
+                       FSIZE,                // int *FSIZE
+                       interval,             // int interval
+                       L_MAX,                // int L_MAX
+                       sum_RL_S              // int sum_RL_S
+                       );
+#endif
+
+#if 1
+      calc_a_score_GPU(
+                       A_SCORE,              // FLOAT *ac_score
+                       dst_SCORE,            // FLOAT *score
+                       dst_rm_size,          // int *ssize_start
+                       MO->MI,               // Model_info *MI
+                       scale_array,          // FLOAT *scale_array
+                       dst_RL_S,             // int *size_score_array
+                       NoC,                  // int NoC
+                       FSIZE,                // int *FSIZE
+                       interval,             // int interval
+                       L_MAX,                // int L_MAX
+                       sum_RL_S              // int sum_RL_S
+                       ); 
+#endif         
+      gettimeofday(&tv_calc_a_score_end, NULL);
+      tvsub(&tv_calc_a_score_end, &tv_calc_a_score_start, &tv);
+      time_calc_a_score += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
+
+
       for (int level=interval; level<L_MAX; level++)  // feature's loop(A's loop) 1level 1picture
-        {
+        {         
+
           /* parameters (related for level) */
           int L=level-interval;
           /* matched score size matrix */
           FLOAT scale=(FLOAT)sbin/scales[level];
           
+
           /**************************************************************************/      
           /* loop conditon */
           
@@ -1452,28 +1564,8 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
           
           /* loop conditon */
           /**************************************************************************/
-          
-          
-          
-          
-          /* calculate accumulated score */
-          gettimeofday(&tv_calc_a_score_start, NULL);
-          
-          calc_a_score_GPU(
-                           A_SCORE,              // FLOAT *ac_score
-                           SCORE_array[L],       // FLOAT **score
-                           rm_size_array[level], // int *ssize_start
-                           MO->MI,               // Model_info *MI
-                           scale,                // FLOAT scale
-                           RL_S_array[L],        // int *size_score_array
-                           NoC                   // int NoC
-                           );
-          
-          gettimeofday(&tv_calc_a_score_end, NULL);
-          tvsub(&tv_calc_a_score_end, &tv_calc_a_score_start, &tv);
-          time_calc_a_score += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-          
-          
+                          
+
           for(int jj=0;jj<NoC;jj++)
             {
               

@@ -414,7 +414,6 @@ CUT_THREADPROC dt_thread_func(void *p){
   }
 
 
-
   /* downloads datas from GPU */
 
   /* downloads M from GPU */
@@ -513,6 +512,7 @@ CUT_THREADPROC dt_thread_func(void *p){
   }
 
 
+
   /* downloads tmpIx from GPU */
 
   sum_part_size = 0;
@@ -598,8 +598,8 @@ CUT_THREADPROC dt_thread_func(void *p){
       }
 
       
-      pointer_dst_tmpIx += (unsigned long long int)(move_size * sizeof(FLOAT));
-      pointer_tmpIx_dev += (unsigned long long int)(move_size * sizeof(FLOAT));
+      pointer_dst_tmpIx += (unsigned long long int)(move_size * sizeof(int));
+      pointer_tmpIx_dev += (unsigned long long int)(move_size * sizeof(int));
 
       part_size = 0;
       pointer_size = 0;
@@ -608,6 +608,7 @@ CUT_THREADPROC dt_thread_func(void *p){
     }
 
   }
+
 
 
   /* downloads tmpIy from GPU */
@@ -695,8 +696,8 @@ CUT_THREADPROC dt_thread_func(void *p){
       }
 
       
-      pointer_dst_tmpIy += (unsigned long long int)(move_size * sizeof(FLOAT));
-      pointer_tmpIy_dev += (unsigned long long int)(move_size * sizeof(FLOAT));
+      pointer_dst_tmpIy += (unsigned long long int)(move_size * sizeof(int));
+      pointer_tmpIy_dev += (unsigned long long int)(move_size * sizeof(int));
 
       part_size = 0;
       pointer_size = 0;

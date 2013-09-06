@@ -824,32 +824,51 @@ void
 calc_a_score(
  int IWID,
  int IHEI,
- FLOAT scale,
  int padx_n,
  int pady_n,
+ int max_X_n,
+ int max_Y_n,
+ int L_MAX,
+ int interval,
+ int sum_RL_S,
  int *RX_array,
  int *RY_array,
  FLOAT *ac_score,
  FLOAT *score_array,
- int *ssize_array,
+ int *ssize_array, 
  int NoC,
- int *size_score_array
+ int *size_score_array,
+ int *FSIZE,
+ FLOAT *scale_array
 )
 {
   int ii = blockIdx.x * blockDim.x + threadIdx.x;
   int jj = blockIdx.y * blockDim.y + threadIdx.y;
+  int component_jj = blockIdx.z;
+  int L = component_jj / NoC;
 
-  int component_jj = threadIdx.z;
 
-  if(0<=component_jj && component_jj < NoC) 
+  if(FSIZE[(L+interval)*2]+2*pady_n<max_Y_n ||(FSIZE[(L+interval)*2+1]+2*padx_n<max_X_n))
+    return;
+
+
+
+  if(0<=component_jj && component_jj < NoC && 0<=L && L < L_MAX-interval) 
     {
 
       unsigned long long int pointer_score = (unsigned long long int)score_array;
       unsigned long long int pointer_ssize = (unsigned long long int)ssize_array;
       unsigned long long int pointer_RX = (unsigned long long int)RX_array;
       unsigned long long int pointer_RY = (unsigned long long int)RY_array;
+
+
+      pointer_score += (unsigned long long int)(L*sum_RL_S*NoC*sizeof(FLOAT));
+      pointer_ssize += (unsigned long long int)((L+interval)*NoC*2*sizeof(int));
+      pointer_RX += (unsigned long long int)(L*NoC*sizeof(int));
+      pointer_RY += (unsigned long long int)(L*NoC*sizeof(int));
+
       for(int k=0; k<component_jj; k++) {
-        pointer_score += (unsigned long long int)size_score_array[k];
+        pointer_score += (unsigned long long int)size_score_array[L*NoC+k];
         pointer_ssize += (unsigned long long int)(sizeof(int));
         pointer_RX += (unsigned long long int)(sizeof(int));
         pointer_RY += (unsigned long long int)(sizeof(int));
@@ -865,9 +884,8 @@ calc_a_score(
 
       if(0<=ii && ii<IWID && 0<=jj && jj<IHEI)
         {
-          int Xn = (int)((FLOAT)ii/scale+padx_n);
-          int Yn = (int)((FLOAT)jj/scale+pady_n);
-
+          int Xn = (int)((FLOAT)ii/scale_array[L]+padx_n);
+          int Yn = (int)((FLOAT)jj/scale_array[L]+pady_n);
           
           if(Yn<ssize0 && Xn<ssize1)
             {
@@ -875,7 +893,7 @@ calc_a_score(
               int Im_Y = jj+RY;
               int Im_X = ii+RX;
               if(Im_Y<IHEI && Im_X<IWID)
-                {
+                { 
                   FLOAT *PP = ac_score+Im_Y+Im_X*IHEI;
                   if(sc>*PP) *PP=sc;
                 }
