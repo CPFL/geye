@@ -312,7 +312,7 @@ int main(void)
 #if 1
       printf("\n****** To finish program, type \"Esc\" key *****\n");
       int IN_KEY=cvWaitKey(0);
-      //        if(IN_KEY==0x1b) break;
+      //      if(IN_KEY==0x1b) break;
       if(IN_KEY==1048603) // if 'Esc' key is typed
         break;  
       // else

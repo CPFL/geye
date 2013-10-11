@@ -305,7 +305,7 @@ void clean_cuda(void)
         exit(1);
     }
  }
-
+  printf("module unloaded\n");
 
   for(int i=0; i<device_num; i++){
     res = cuCtxDestroy(ctx[i]);
@@ -314,7 +314,7 @@ void clean_cuda(void)
         exit(1);
     }
   }
-
+  printf("context destroyed\n");
     free(NR_MAXTHREADS_X);
     free(NR_MAXTHREADS_Y);
     free(func_process_root);
@@ -327,5 +327,5 @@ void clean_cuda(void)
     free(module);
     free(dev);
     free(ctx);
-
+    printf("clean_cuda finished\n");
 }/* clean_cuda */

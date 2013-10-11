@@ -12,6 +12,7 @@
 #include "multithreading.h"
 #include "multithreading.cpp"
 #include "for_use_GPU.h"
+#include "drvapi_error_string.h"
 
 // use for dt_GPU
 int part_error_array_num;
@@ -60,12 +61,12 @@ CUT_THREADPROC fconvs_thread_func(void *p){
   CUdeviceptr A_SIZE_dev;
   int thread_num_x, thread_num_y, block_num_x, block_num_y;
 
+  /* set CUDA context to this CPU thread */
   res = cuCtxSetCurrent(ctx[pt->pid]);
   if(res != CUDA_SUCCESS) {
     printf("cuCtxSetCurrent(ctx[%d]) failed: res = %s\n", pt->pid, conv(res));
     exit(1);
   }
-
 
   /* define CUDA block shape */
   int max_threads_num = 0;
@@ -77,7 +78,6 @@ CUT_THREADPROC fconvs_thread_func(void *p){
 
 
   /* calculate max size of each block dimension */
-
   NR_MAXTHREADS_X[pt->pid] = (int)sqrt((FLOAT)max_threads_num/pt->len);
   NR_MAXTHREADS_Y[pt->pid] = (int)sqrt((FLOAT)max_threads_num/pt->len);
   if(NR_MAXTHREADS_X[pt->pid] < 1) NR_MAXTHREADS_X[0]++;
@@ -92,9 +92,7 @@ CUT_THREADPROC fconvs_thread_func(void *p){
   if(pt->max_height % thread_num_y != 0) block_num_y++;
 
 
-
   /* allocate GPU memory */
-
   res = cuMemAlloc(&featp2_dev, pt->SUM_SIZE_feat);
   if(res != CUDA_SUCCESS) {
     printf("cuMemAlloc(featp2_dev) failed: res = %s\n", conv(res));
@@ -143,19 +141,19 @@ CUT_THREADPROC fconvs_thread_func(void *p){
     break;    
   }
 
-
   /* upload data to GPU memory */
   if(pt->pid == 0){
     gettimeofday(&tv_memcpy_start, NULL);
   }
 
-
+  /* upload resized source images to GPU */
   res = cuMemcpyHtoD(featp2_dev, pt->featp2[0], pt->SUM_SIZE_feat);
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyHtoD(featp2) failed: res = %s\n", conv(res));
     exit(1);
   }
 
+  /* upload resize image sizes to GPU */
   res = cuMemcpyHtoD(A_SIZE_dev, pt->A_SIZE, pt->L_MAX*3*sizeof(int));
   if(res != CUDA_SUCCESS) {
     printf("cuMemcpyHtoD(new_PADsize) failed: res = %s\n", conv(res));
@@ -163,14 +161,14 @@ CUT_THREADPROC fconvs_thread_func(void *p){
   }
 
 
-  /* upload filter */
+  /* upload filter to GPU */
   res = cuMemcpyHtoD(B_dev, pt->filter[pt->start],  pt->SUM_SIZE_B);
   if(res != CUDA_SUCCESS){
     printf("cuMemcpyHtoD(B_dev) failed: res = %s\n", conv(res));
     exit(1);
   }
 
-
+  /* upload error condition to GPU */
   switch(pt->calc_flag) {
   case ROOT:
     res = cuMemcpyHtoD(part_root_error_array_dev, pt->error_array, pt->error_array_num*sizeof(int));
@@ -195,6 +193,95 @@ CUT_THREADPROC fconvs_thread_func(void *p){
     
   }
 
+
+  /* get handle to a texture memory on GPU */
+  CUtexref featp2_texref, B_texref;
+  if(sizeof(FLOAT) == sizeof(float)) // if configured to use single precision
+    {
+      res = cuModuleGetTexRef(&featp2_texref, module[pt->pid], "A");
+      if(res != CUDA_SUCCESS) {
+        printf("cuModuleGetTexRef(featp2) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+        exit(1);
+      }
+      
+      res = cuModuleGetTexRef(&B_texref, module[pt->pid], "B");
+      if(res != CUDA_SUCCESS) {
+        printf("cuModuleGetTexRef(B) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+        exit(1);
+      }
+    }
+  else                        // if configured to use double precision
+    {
+      res = cuModuleGetTexRef(&featp2_texref, module[pt->pid], "A_double");
+      if(res != CUDA_SUCCESS) {
+        printf("cuModuleGetTexRef(featp2) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+        exit(1);
+      }
+      
+      res = cuModuleGetTexRef(&B_texref, module[pt->pid], "B_double");
+      if(res != CUDA_SUCCESS) {
+        printf("cuModuleGetTexRef(B) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+        exit(1);
+      }
+    }
+  
+  /* bind to texture memory on GPU */
+  res = cuTexRefSetAddress(NULL, featp2_texref, featp2_dev, pt->SUM_SIZE_feat);
+  if (res != CUDA_SUCCESS) {
+    printf("cuTexRefSetAddress(featp2_dev) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+    exit(1);
+  }
+
+
+  res = cuTexRefSetAddress(NULL, B_texref, B_dev,  pt->SUM_SIZE_B);
+  if (res != CUDA_SUCCESS) {
+    printf("cuTexRefSetAddress(B_dev) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+    exit(1);
+  }
+
+  /* texture memory configuration */
+  res = cuTexRefSetFlags(featp2_texref, CU_TRSF_NORMALIZED_COORDINATES);
+  if (res != CUDA_SUCCESS) {
+    printf("cuTexRefSetFlags(featp2_texref) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+    exit(1);
+  }
+
+  res = cuTexRefSetFlags(B_texref, CU_TRSF_NORMALIZED_COORDINATES);
+  if (res != CUDA_SUCCESS) {
+    printf("cuTexRefSetFlags(B_texref) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+    exit(1);
+  }
+
+  if(sizeof(FLOAT) == sizeof(float)) // if configured to use single precision
+    {
+      res = cuTexRefSetFormat(featp2_texref, CU_AD_FORMAT_FLOAT, 1);
+      if (res != CUDA_SUCCESS) {
+        printf("cuTexRefSetFormat(featp2_texref) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+        exit(1);
+      }
+      
+      res = cuTexRefSetFormat(B_texref, CU_AD_FORMAT_FLOAT, 1);
+      if (res != CUDA_SUCCESS) {
+        printf("cuTexRefSetFormat(B_texref) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+        exit(1);
+      }
+    }
+  else                          // if configured to use double precision
+    {
+      res = cuTexRefSetFormat(featp2_texref, CU_AD_FORMAT_UNSIGNED_INT32, 2);
+      if (res != CUDA_SUCCESS) {
+        printf("cuTexRefSetFormat(featp2_texref) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+        exit(1);
+      }
+      
+      res = cuTexRefSetFormat(B_texref, CU_AD_FORMAT_UNSIGNED_INT32, 2);
+      if (res != CUDA_SUCCESS) {
+        printf("cuTexRefSetFormat(B_texref) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+        exit(1);
+      }
+    }
+
+
   if(pt->pid == 0){
     gettimeofday(&tv_memcpy_end, NULL);
     tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
@@ -203,7 +290,6 @@ CUT_THREADPROC fconvs_thread_func(void *p){
 
 
   /* allocate output region on GPU memory and upload date to GPU*/
-
   switch(pt->calc_flag) {
   case ROOT:
     res = cuMemAlloc(&part_root_C_dev, pt->SUM_SIZE_C);
@@ -284,10 +370,10 @@ CUT_THREADPROC fconvs_thread_func(void *p){
   /* dealing with 1 model(B) by 1 z_dimension of block */
 
   void *kernel_args[] = {
-    &featp2_dev,     // kernel_args[0]
-    &B_dev,                         // kernel_args[1]
+    // &featp2_dev,                    // kernel_args[0]
+    // &B_dev,                         // kernel_args[1]
     &part_root_C_dev,               // kernel_args[2]
-    &A_SIZE_dev,     // kernel_args[3]
+    &A_SIZE_dev,                    // kernel_args[3]
     &B_dims_dev,                    // kernel_args[4]
     (void *)&(pt->len),             // kernel_args[5]
     (void *)&(pt->interval),        // kernel_args[6]
@@ -297,12 +383,17 @@ CUT_THREADPROC fconvs_thread_func(void *p){
     (void *)&(pt->pid),             // kernel_args[10]
     (void *)&(device_num)           // kernel_args[11]
   };
-  
+
 
   if(pt->calc_flag == PART) {
-    kernel_args[2] = &part_part_C_dev;
-    kernel_args[8] = &part_part_error_array_dev;
+    //kernel_args[2] = &part_part_C_dev;
+    kernel_args[0] = &part_part_C_dev;
+    //kernel_args[8] = &part_part_error_array_dev;
+    kernel_args[6] = &part_part_error_array_dev;
   }
+ 
+
+ 
   int sharedMemBytes = 0;
 
   gridDimX = block_num_x / device_num;
@@ -396,12 +487,12 @@ CUT_THREADPROC fconvs_thread_func(void *p){
     for(int lev = pt->interval; lev < pt->L_MAX; lev++){
 
       /* loop condition */
-      for(int k = 0; k < pt->error_array_num; k++){
+      for(int k = 0; k < pt->error_array_num; k++) {
         if(pt->error_array[k] == lev)
           error_flag = 1;
         }
 
-      for(int ii = 0; ii < pt->len; ii++){
+      for(int ii = 0; ii < pt->len; ii++) {
 
         if(error_flag == 1) {
           error_flag = 0;
@@ -431,6 +522,7 @@ CUT_THREADPROC fconvs_thread_func(void *p){
           printf("cuMemcpyDtoH(dst_C root) failed: res = %s\n", conv(res));
           exit(1);
         }
+
                
         pointer_C += (unsigned long long int)(C_dims0 * C_dims1 * sizeof(FLOAT));
         root_pointer_dev += (unsigned long long int)(C_dims0 * C_dims1 * sizeof(FLOAT));
@@ -460,14 +552,14 @@ CUT_THREADPROC fconvs_thread_func(void *p){
 
   case PART:
 
-    for(int lev = 0; lev < (pt->L_MAX-pt->interval); lev++){
+    for(int lev = 0; lev < (pt->L_MAX-pt->interval); lev++) {
 
-      for(int k = 0; k < part_error_array_num; k++){
+      for(int k = 0; k < part_error_array_num; k++) {
         if(pt->error_array[k] == lev)
           error_flag = 1;
         }
 
-      for(int ii = 0; ii < pt->len; ii++){
+      for(int ii = 0; ii < pt->len; ii++) {
 
         if(error_flag == 1) {
           error_flag = 0;
@@ -481,7 +573,7 @@ CUT_THREADPROC fconvs_thread_func(void *p){
 
         C_x = C_dims1 / device_num;
 
-        if(C_dims1 % device_num != 0){
+        if(C_dims1 % device_num != 0) {
           C_x++;
         }
 
@@ -495,10 +587,11 @@ CUT_THREADPROC fconvs_thread_func(void *p){
         if(res != CUDA_SUCCESS) {
           printf("cuMemcpyDtoH(dst_C root) failed: res = %s\n", conv(res));
           exit(1);
-        }        
-               
+        }
+
         pointer_C += (unsigned long long int)(C_dims0 * C_dims1 * sizeof(FLOAT));
         part_pointer_dev += (unsigned long long int)(C_dims0 * C_dims1 * sizeof(FLOAT));
+
 
       }
 
