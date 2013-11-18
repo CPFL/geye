@@ -122,7 +122,7 @@ CUT_THREADPROC fconvs_thread_func(void *p){
     res = cuMemAlloc(&part_root_error_array_dev, pt->error_array_num*sizeof(int));
     if(res != CUDA_SUCCESS){
       printf("cuMemAlloc(root_error_array_dev) failed: res = %s\n", conv(res));
-    exit(1);
+     exit(1);
     }
     break;
 
