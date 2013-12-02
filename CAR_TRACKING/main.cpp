@@ -71,6 +71,8 @@ struct timeval tv_kernel_start, tv_kernel_end;
 float time_kernel;
 
 
+int device_num;
+
 int main(void)
 {
   FILE* fp;                   //file pointer
@@ -92,6 +94,8 @@ int main(void)
   float one_process;
   struct timeval tv_car_detection_start, tv_car_detection_end;
   float time_car_detection;
+  float other;
+
 
   
   
@@ -153,7 +157,10 @@ int main(void)
   //load laser and movie data
   //for(int im=ss;im<2000;im++)
   for(int im=1;im<=11;im++)
+  //    for(int im=1;im<=20;im++)
+    //  for(int im_loop=0;im_loop<10;im_loop++)
     {
+      //int im = 11;
       gettimeofday(&tv_1process_start, NULL);
       time_memcpy = 0;
       time_kernel = 0;
@@ -301,10 +308,8 @@ int main(void)
       one_process = tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
 
       //      printf("car_detection : %f\n", time_car_detection);
-
       printf("memory copy    %f\n", time_memcpy);
       printf("kernel execute %f\n", time_kernel);
-
       printf("1process : %f\n", one_process);
 #endif
 
@@ -312,7 +317,7 @@ int main(void)
 #if 1
       printf("\n****** To finish program, type \"Esc\" key *****\n");
       int IN_KEY=cvWaitKey(0);
-      //        if(IN_KEY==0x1b) break;
+      //      if(IN_KEY==0x1b) break;
       if(IN_KEY==1048603) // if 'Esc' key is typed
         break;  
       // else
