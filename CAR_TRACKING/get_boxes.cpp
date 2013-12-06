@@ -1285,10 +1285,7 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
           }
 
 
-<<<<<<< HEAD
 
-=======
->>>>>>> da1109b14966f973d18cd6cebffc64317e215f67
        
           gettimeofday(&tv_dt_start, NULL);
           FLOAT ****M_array = dt_GPU(                     

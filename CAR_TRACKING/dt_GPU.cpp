@@ -988,9 +988,6 @@ FLOAT ****dt_GPU(
   cutWaitForThreads(threads, device_num);
   free(threads);
 
-
-  free(threads);
-
   for(int level=interval; level<L_MAX; level++) {
     int L = level - interval;
     /**************************************************************************/

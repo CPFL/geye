@@ -407,19 +407,7 @@ inverse_Q(
     } else return ;
    
 
-  if(0<=jj && jj<NoC)
-    {
-      numpart_jj = numpart[jj];
-      C_y = numpart_jj/device_number;
-      if(numpart_jj%device_number != 0){
-        C_y++;
-       }
-      kk = kk + pid * C_y;
-      if(kk < C_y * pid  ||  kk >=  C_y * (pid + 1)){
-         return ;
-       }
-    } else return ;
-   
+
 
   if(0<=L && L < (L_MAX-interval)) 
     {
