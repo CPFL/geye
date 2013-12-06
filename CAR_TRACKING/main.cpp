@@ -95,8 +95,7 @@ int main(void)
   struct timeval tv_car_detection_start, tv_car_detection_end;
   float time_car_detection;
   float other;
-  
-  
+
   /* Output file for detect result */
   resFP = fopen("detect_result.dat", "w");
   
@@ -155,7 +154,10 @@ int main(void)
   //load laser and movie data
   //for(int im=ss;im<2000;im++)
   for(int im=1;im<=11;im++)
+  //    for(int im=1;im<=20;im++)
+    //  for(int im_loop=0;im_loop<10;im_loop++)
     {
+      //int im = 11;
       gettimeofday(&tv_1process_start, NULL);
       time_memcpy = 0;
       time_kernel = 0;

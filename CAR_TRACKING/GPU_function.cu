@@ -407,6 +407,20 @@ inverse_Q(
     } else return ;
    
 
+  if(0<=jj && jj<NoC)
+    {
+      numpart_jj = numpart[jj];
+      C_y = numpart_jj/device_number;
+      if(numpart_jj%device_number != 0){
+        C_y++;
+       }
+      kk = kk + pid * C_y;
+      if(kk < C_y * pid  ||  kk >=  C_y * (pid + 1)){
+         return ;
+       }
+    } else return ;
+   
+
   if(0<=L && L < (L_MAX-interval)) 
     {
   
@@ -450,9 +464,6 @@ inverse_Q(
                   
             }
           }
-              
-   
-              
           for(int j=0; j<PIDX; j++) {
             int height = size_array[L*NoP*2 + j*2];
             int width = size_array[L*NoP*2 + j*2+1];

@@ -66,10 +66,10 @@ void init_cuda(void)
     res = cuDeviceGetCount(&device_num);
     if(res != CUDA_SUCCESS) {
       printf("cuDeviceGetCount() failed: res = %s\n", conv(res));
+
       exit(1);
     }
     printf("%d GPUs found\n", device_num);
-
 
   /* get device */
     dev = (CUdevice*)malloc(device_num*sizeof(CUdevice));
@@ -121,6 +121,7 @@ void init_cuda(void)
       exit(1);
     }
   }
+
 
 
   for(int i=0; i<device_num; i++) {

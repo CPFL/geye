@@ -78,13 +78,15 @@ CUT_THREADPROC fconvs_thread_func(void *p){
 
 
   /* calculate max size of each block dimension */
-  NR_MAXTHREADS_X[pt->pid] = (int)sqrt((FLOAT)max_threads_num/pt->len);
-  NR_MAXTHREADS_Y[pt->pid] = (int)sqrt((FLOAT)max_threads_num/pt->len);
+  NR_MAXTHREADS_X[pt->pid] = (int)sqrt((FLOAT)max_threads_num); //(int)sqrt((FLOAT)max_threads_num/pt->len);
+  NR_MAXTHREADS_Y[pt->pid] = (int)sqrt((FLOAT)max_threads_num); //(int)sqrt((FLOAT)max_threads_num/pt->len);
   if(NR_MAXTHREADS_X[pt->pid] < 1) NR_MAXTHREADS_X[0]++;
   if(NR_MAXTHREADS_Y[pt->pid] < 1) NR_MAXTHREADS_Y[0]++;
-  
+
+
   thread_num_x = (pt->max_width < NR_MAXTHREADS_X[pt->pid]) ? pt->max_width : NR_MAXTHREADS_X[pt->pid];
   thread_num_y = (pt->max_height < NR_MAXTHREADS_Y[pt->pid]) ? pt->max_height : NR_MAXTHREADS_Y[pt->pid];
+
   
   block_num_x = pt->max_width / thread_num_x;
   block_num_y = pt->max_height / thread_num_y;
@@ -517,11 +519,15 @@ CUT_THREADPROC fconvs_thread_func(void *p){
           x_size = C_x*C_dims0*sizeof(FLOAT);
 
 
-        res = cuMemcpyDtoH((void *)(pointer_C+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), (CUdeviceptr)(root_pointer_dev+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), x_size);
-        if(res != CUDA_SUCCESS) {
-          printf("cuMemcpyDtoH(dst_C root) failed: res = %s\n", conv(res));
-          exit(1);
-        }
+	if(pt->pid*C_x < C_dims1){
+
+	  res = cuMemcpyDtoH((void *)(pointer_C+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), (CUdeviceptr)(root_pointer_dev+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), x_size);
+	  if(res != CUDA_SUCCESS) {
+	    printf("cuMemcpyDtoH(dst_C root) failed: res = %s\n", conv(res));
+	    exit(1);
+	  }
+
+	}
 
                
         pointer_C += (unsigned long long int)(C_dims0 * C_dims1 * sizeof(FLOAT));
@@ -583,11 +589,15 @@ CUT_THREADPROC fconvs_thread_func(void *p){
           x_size = C_x*C_dims0*sizeof(FLOAT);
 
 
-        res = cuMemcpyDtoH((void *)(pointer_C+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), (CUdeviceptr)(part_pointer_dev+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), x_size);
-        if(res != CUDA_SUCCESS) {
-          printf("cuMemcpyDtoH(dst_C root) failed: res = %s\n", conv(res));
-          exit(1);
-        }
+	if(pt->pid*C_x < C_dims1){
+
+	  res = cuMemcpyDtoH((void *)(pointer_C+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), (CUdeviceptr)(part_pointer_dev+(unsigned long long int)(pt->pid*C_x*C_dims0*sizeof(FLOAT))), x_size);
+	  if(res != CUDA_SUCCESS) {
+	    printf("cuMemcpyDtoH(dst_C root) failed: res = %s\n", conv(res));
+	    exit(1);
+	  }
+
+	}
 
         pointer_C += (unsigned long long int)(C_dims0 * C_dims1 * sizeof(FLOAT));
         part_pointer_dev += (unsigned long long int)(C_dims0 * C_dims1 * sizeof(FLOAT));

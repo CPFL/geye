@@ -1285,7 +1285,10 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
           }
 
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> da1109b14966f973d18cd6cebffc64317e215f67
        
           gettimeofday(&tv_dt_start, NULL);
           FLOAT ****M_array = dt_GPU(                     
@@ -1311,9 +1314,8 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
           gettimeofday(&tv_dt_end, NULL);
           tvsub(&tv_dt_end, &tv_dt_start, &tv);
           time_dt += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-          
-          
-          
+         
+
           /* add part score */
           for(int level=interval; level<L_MAX; level++){
             int L = level - interval;          
@@ -1720,7 +1722,6 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
   s_free(rm_size_array);
   s_free(pm_size_array[0]);
   s_free(pm_size_array);
-  
 
 
   /* Output boundary-box coorinate information */
