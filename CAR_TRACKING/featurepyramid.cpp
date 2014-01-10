@@ -41,6 +41,7 @@ using namespace std;
 #include "Common.h"
 
 #include "switch_float.h"
+#include "switch_release.h"
 
 #ifndef WIN32
 #define __stdcall void*
@@ -48,6 +49,8 @@ typedef void *HANDLE;
 typedef long LONG_PTR;
 #define INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
 #endif
+
+#include <unistd.h>
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -181,7 +184,9 @@ FLOAT *ini_scales(Model_info *MI,IplImage *IM,int X,int Y) //X,Y length of image
 
 		if(max_scale<interval) max_scale = interval;
 		MI->max_scale=max_scale;
+#ifdef PRINT_INFO
 		printf("max_scale:%d\n",max_scale);
+#endif  // ifdef PRINT_INFO
 		MI->IM_HEIGHT=IM->height;
 		/*printf("‚‚³%d\n",MI->IM_HEIGHT);*/
 		MI->IM_WIDTH=IM->width;
@@ -461,16 +466,24 @@ FLOAT *calc_feature(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin)
 FLOAT *Ipl_to_FLOAT(IplImage *Input)	//get intensity data (FLOAT) of input
 {
 	const int width = Input->width;
+#ifdef PRINT_INFO
 	printf("%d\n",width);
+#endif  // ifdef PRINT_INFO
 	const int height = Input->height;
+#ifdef PRINT_INFO
 	printf("%d\n",height);
+#endif  // ifdef PRINT_INFO
 	const int nChannels = Input->nChannels;
+#ifdef PRINT_INFO
 	printf("%d\n",nChannels);
+#endif  // ifdef PRINT_INFO
 	const int SQ = height*width;
 	const int WS = Input->widthStep;
 
 	FLOAT *Output = (FLOAT *)malloc(sizeof(FLOAT)*height*width*nChannels);
+#ifdef PRINT_INFO
 	printf("%d",height*width*nChannels);
+#endif  // ifdef PRINT_INFO
 
 	FLOAT *R= Output;
 	FLOAT *G= Output+SQ;

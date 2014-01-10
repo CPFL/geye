@@ -187,8 +187,6 @@ FLOAT ****dt_GPU(
 
 //#define SEPARETE_MEM
 
-
-    
 #ifdef __cplusplus
 }
 #endif

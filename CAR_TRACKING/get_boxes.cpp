@@ -18,6 +18,7 @@
 
 #include "for_use_GPU.h"
 #include "switch_float.h"
+#include "switch_release.h"
 
 CUdeviceptr *pm_size_array_dev;
 CUdeviceptr *PIDX_array_dev;
@@ -1618,10 +1619,13 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
   // printf("============================================\n");
   // printf("\n");
   
+
+#ifdef PRINT_INFO
   printf("root SCORE : %f\n", time_root_score);
   printf("part SCORE : %f\n", time_part_score);
   printf("dt  : %f\n", time_dt);
   printf("calc_a_score : %f\n", time_calc_a_score);
+#endif // ifdef PRINT_INFO
   
 
 #endif

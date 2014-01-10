@@ -4,6 +4,7 @@
 #include "cutil.h"
 #include "drvapi_error_string.h"
 #include <cuda_runtime_api.h>
+#include "switch_release.h"
 
 #define MAX_CPU_THREAD 2
 
@@ -53,7 +54,11 @@ void init_cuda(void)
 
     CUresult res;
     //const char file_name[43] = "./gccDebug/GPU_function.cubin";
+#ifdef RELEASE
+    const char file_name[256] = "/usr/local/geye/bin/car_detecter/GPU_function.cubin";
+#else
     const char file_name[43] = "./gccRelease/GPU_function.cubin";
+#endif  // ifdef RELEASE
     int i;
     /* initnialize GPU */
     res = cuInit(0);
@@ -69,7 +74,9 @@ void init_cuda(void)
 
       exit(1);
     }
+#ifdef PRINT_INFO
     printf("%d GPUs found\n", device_num);
+#endif // ifdef PRINT_INFO
 
   /* get device */
     dev = (CUdevice*)malloc(device_num*sizeof(CUdevice));
