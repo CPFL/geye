@@ -514,7 +514,7 @@ void* feat_calc(void *thread_arg)
   //_endthreadex(0);
   //return(0);
 
-  ////  pthread_exit((void*)thread_arg);
+  pthread_exit((void*)thread_arg);
 
 }
 
@@ -624,9 +624,9 @@ FLOAT **calc_f_pyramid
                       ii
                       );  //initialize thread
 
-      // if( pthread_create(&ts[t_count], NULL, feat_calc, (void*)&td[t_count]))
-      //   {printf("Error thread\n"); exit(0);}
-      feat_calc((void *)&td[t_count]);
+      if( pthread_create(&ts[t_count], NULL, feat_calc, (void*)&td[t_count]))
+        {printf("Error thread\n"); exit(0);}
+      //      feat_calc((void *)&td[t_count]);
       t_count++;
       
       /* パートフィルタ用特徴量(局所的特徴量)？ */
@@ -640,9 +640,9 @@ FLOAT **calc_f_pyramid
                       ii+interval
                       );	//initialize thread
 
-      // if(pthread_create(&ts[t_count], NULL, feat_calc, (void*)&td[t_count]))
-      //   {printf("Error thread\n"); exit(0);}
-      feat_calc((void *)&td[t_count]);
+      if(pthread_create(&ts[t_count], NULL, feat_calc, (void*)&td[t_count]))
+        {printf("Error thread\n"); exit(0);}
+      //      feat_calc((void *)&td[t_count]);
       t_count++;
       
       /* remained resolutions (for root_only) */
@@ -656,9 +656,9 @@ FLOAT **calc_f_pyramid
                           jj+interval
                           ); //initialize thread
 
-          // if(pthread_create(&ts[t_count], NULL, feat_calc, (void*)&td[t_count]))
-          //   {printf("Error thread\n"); exit(0);}
-          feat_calc((void *)&td[t_count]);          
+          if(pthread_create(&ts[t_count], NULL, feat_calc, (void*)&td[t_count]))
+            {printf("Error thread\n"); exit(0);}
+          //          feat_calc((void *)&td[t_count]);          
           t_count++;
         }
     }
@@ -667,12 +667,12 @@ FLOAT **calc_f_pyramid
   /* get thread data */
   for(int ss=0; ss<LEN; ss++)
     {
-      //      pthread_join(ts[ss], NULL);
+      pthread_join(ts[ss], NULL);
       feat[td[ss].F_C] = td[ss].Out; // ここで特徴量をひとつの配列にまとめる
 
       memcpy(&FTSIZE[td[ss].F_C*2], td[ss].FSIZE, sizeof(int)*2);
 
-      //      close(ts[ss]);
+      close(ts[ss]);
     }
   
   /* release original image */
