@@ -104,7 +104,7 @@ struct thread_data {
 
 extern CUdevice *dev;
 extern CUcontext *ctx;
-extern CUfunction *func_process_root, *func_process_part, *func_dt1d_x, *func_dt1d_y, *func_calc_a_score, *func_inverse_Q;
+extern CUfunction *func_process_root, *func_process_part, *func_dt1d_x, *func_dt1d_y, *func_calc_a_score, *func_inverse_Q, *func_calc_feature;
 extern CUmodule *module;
 extern int *NR_MAXTHREADS_X, *NR_MAXTHREADS_Y;
 

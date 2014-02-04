@@ -1,7 +1,7 @@
 # Compiler flags...
 CPP_COMPILER = g++
 C_COMPILER = gcc
-CUDA_ARCH=sm_20
+CUDA_ARCH=sm_21
 CUDA_COMPILER = nvcc -arch=$(CUDA_ARCH) -cubin
 
 # Include paths...
