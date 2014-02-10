@@ -979,46 +979,28 @@ texture<int2, cudaTextureType1D, cudaReadModeElementType>  resized_image_double;
 texture<int , cudaTextureType1D, cudaReadModeElementType>  resized_image_size;
 
 
-#define USE_TEX
+//#define ORIGINAL
+
+#ifdef ORIGINAL
 
 extern "C"
 __global__
 void
-#ifdef USE_TEX
 calc_feature
 (
  FLOAT *hist,
  int sbin
  )
-#else
- calc_feature
-(
- FLOAT *SRC,
- int   *size,
- FLOAT *hist,
- int sbin
- )
-#endif
 {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
-  
+ 
   const FLOAT Hcos[9] = {1.0000, 0.9397, 0.7660, 0.5000, 0.1736, -0.1736, -0.5000, -0.7660, -0.9397};
   const FLOAT Hsin[9] = {0.0000, 0.3420, 0.6428, 0.8660, 0.9848, 0.9848, 0.8660, 0.6428, 0.3420};
-  
-  /* input size */
-#ifdef USE_TEX
 
+  /* input size */
   const int height = tex1Dfetch(resized_image_size, 0);
   const int width  = tex1Dfetch(resized_image_size, 1);
-
-#else
- 
-  const int height = size[0];
-  const int width  = size[1];
-
-#endif
-
   const int dims[2] = {height, width};
 
   /* size of Histgrams and Norm calculation space */
@@ -1037,8 +1019,6 @@ calc_feature
     {
 
       /* first color channel */
-#ifdef USE_TEX
-
       int base_index = min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
       FLOAT dx, dy;
       if (sizeof(FLOAT) == sizeof(float))
@@ -1056,20 +1036,9 @@ calc_feature
           arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
           dx = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
         }
-
-#else
-
-      int base_index = min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
-      FLOAT dy = SRC[base_index + 1] - SRC[base_index - 1];
-      FLOAT dx = SRC[base_index + dims[0]] - SRC[base_index - dims[0]];
-
-#endif
-
       FLOAT  v  = dx*dx + dy*dy;
       
       /* second color channel */
-#ifdef USE_TEX
-
       base_index += dims[0]*dims[1];
       FLOAT dx2, dy2;
       if (sizeof(FLOAT) == sizeof(float))
@@ -1087,20 +1056,9 @@ calc_feature
           arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
           dx2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
         }
-
-#else
-
-      base_index += dims[0]*dims[1];
-      FLOAT dy2 = SRC[base_index + 1] - SRC[base_index -1];
-      FLOAT dx2 = SRC[base_index + dims[0]] - SRC[base_index - dims[0]];
-
-#endif
-
       FLOAT v2  = dx2*dx2 + dy2*dy2;
       
       /* third color channel */
-#ifdef USE_TEX
-
       base_index += dims[0]*dims[1];
       FLOAT dx3, dy3;
       if (sizeof(FLOAT) == sizeof(float))
@@ -1118,15 +1076,6 @@ calc_feature
           arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
           dx3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
         }
-
-#else
-
-      base_index += dims[0]*dims[1];
-      FLOAT dy3 = SRC[base_index + 1] - SRC[base_index -1];
-      FLOAT dx3 = SRC[base_index + dims[0]] - SRC[base_index - dims[0]];
-
-#endif
-
       FLOAT v3  = dx3*dx3 + dy3*dy3;
 
       /* pick channel with strongest gradient */
@@ -1185,6 +1134,221 @@ calc_feature
           
           if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
             atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx0*vy0*v);
+          }
+        }
+      else
+        {
+          if (ixp >= 0 && iyp >= 0) {
+            atomicAdd_double((double *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (double)vx1*vy1*v);
+          }
+          
+          if (ixp+1 < blocks[1] && iyp >= 0) {
+            atomicAdd_double((double *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (double)vx0*vy1*v);
+          }
+          
+          if (ixp >= 0 && iyp+1 < blocks[0]) {
+            atomicAdd_double((double *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (double)vx1*vy0*v);
+          }
+          
+          if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
+            atomicAdd_double((double *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (double)vx0*vy0*v);
+          }
+        }
+      
+    }
+      
+      //   }
+      // }
+      
+}
+
+
+
+#else  // ifdef ORIGINAL
+
+
+
+extern "C"
+__global__
+void
+calc_feature
+(
+ FLOAT *hist_top,
+ int sbin1,
+ int sbin2,
+ int interval,
+ int max_scale
+ )
+{
+  int x     = blockIdx.x * blockDim.x + threadIdx.x;
+  int y     = blockIdx.y * blockDim.y + threadIdx.y;
+  int level = blockIdx.z;
+  int sbin  = (level < interval) ? sbin2 : sbin1;
+  int LEN   = interval + max_scale;
+ 
+  const FLOAT Hcos[9] = {1.0000, 0.9397, 0.7660, 0.5000, 0.1736, -0.1736, -0.5000, -0.7660, -0.9397};
+  const FLOAT Hsin[9] = {0.0000, 0.3420, 0.6428, 0.8660, 0.9848, 0.9848, 0.8660, 0.6428, 0.3420};
+
+  /* adjust pointer position */
+  unsigned long long int ptr_hist = (unsigned long long int)hist_top;
+  int base_index = 0;
+
+  for (int ss=0; ss<level; ss++) {
+    int dim0       = tex1Dfetch(resized_image_size, ss*3);
+    int dim1       = tex1Dfetch(resized_image_size, ss*3 + 1);
+    int dim2       = tex1Dfetch(resized_image_size, ss*3 + 2);
+    int sbin_inner = (ss < interval) ? sbin2 : sbin1;
+    int blocks0    = (int)floor((double)dim0/(double)sbin_inner + 0.5);
+    int blocks1    = (int)floor((double)dim1/(double)sbin_inner + 0.5);
+
+    base_index += dim0 * dim1 * dim2;
+
+    ptr_hist   += blocks0 * blocks1 * 18 * sizeof(FLOAT);
+
+  }
+  FLOAT *hist = (FLOAT *)ptr_hist;
+
+  /* input size */
+  const int height  = tex1Dfetch(resized_image_size, level*3);
+  const int width   = tex1Dfetch(resized_image_size, level*3 + 1);
+  const int dims[2] = {height, width};
+
+  /* size of Histgrams and Norm calculation space */
+  const int blocks[2] = {
+    (int)floor((double)height/(double)sbin+0.5),
+    (int)floor((double)width/(double)sbin+0.5)
+  };
+  
+  /* Visible range (eliminate border blocks) */
+  const int visible[2] = {blocks[0]*sbin, blocks[1]*sbin};
+  
+
+  // for (int x=1; x<visible[1]-1; x++) {
+  //   for (int y=1; y<visible[0]-1; y++) {
+  if (1<=x && x<visible[1]-1 && 1<=y && y<visible[0]-1 && 0<=level && level <= LEN) 
+    {
+
+      /* first color channel */
+      base_index += min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
+      FLOAT dx, dy;
+      if (sizeof(FLOAT) == sizeof(float))
+        {
+          dy = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+          dx = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+        }
+      else
+        {
+          int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
+          int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
+          dy = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+          
+          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+          dx = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+        }
+      FLOAT  v  = dx*dx + dy*dy;
+      
+      /* second color channel */
+      base_index += dims[0]*dims[1];
+      FLOAT dx2, dy2;
+      if (sizeof(FLOAT) == sizeof(float))
+        {
+          dy2 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+          dx2 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+        }
+      else
+        {
+          int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
+          int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
+          dy2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+
+          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+          dx2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+        }
+      FLOAT v2  = dx2*dx2 + dy2*dy2;
+      
+      /* third color channel */
+      base_index += dims[0]*dims[1];
+      FLOAT dx3, dy3;
+      if (sizeof(FLOAT) == sizeof(float))
+        {
+          dy3 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+          dx3 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+        }
+      else
+        {
+          int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
+          int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
+          dy3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+          
+          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+          dx3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+        }
+      FLOAT v3  = dx3*dx3 + dy3*dy3;
+      
+      /* pick channel with strongest gradient */
+      if (v2 > v) {
+        v  = v2;
+        dx = dx2;
+        dy = dy2;
+      }
+      if (v3 > v) {
+        v  = v3;
+        dx = dx3;
+        dy = dy3;
+      }
+      
+      /* snap to one of 18 orientations */
+      FLOAT best_dot = 0;
+      int   best_o   = 0;
+
+#pragma unroll 9
+      for (int o=0; o<9; o++) {
+        FLOAT dot = Hcos[o]*dx + Hsin[o]*dy; 
+        
+        if (dot > best_dot) {
+          best_dot = dot;
+          best_o   = o;
+        }
+        else if (-dot > best_dot) {
+          best_dot = -dot;
+          best_o   = o + 9;
+        }
+      }
+      
+      /*add to 4 histgrams aroud pixel using linear interpolation*/
+      FLOAT xp  = ((FLOAT)x+0.5)/(FLOAT)sbin - 0.5;
+      FLOAT yp  = ((FLOAT)y+0.5)/(FLOAT)sbin - 0.5;
+      int   ixp = (int)floor((double)xp);
+      int   iyp = (int)floor((double)yp);
+      FLOAT vx0 = xp - ixp;
+      FLOAT vy0 = yp - iyp;
+      FLOAT vx1 = 1.0 - vx0;
+      FLOAT vy1 = 1.0 - vy0;
+      v = sqrt((double)v);
+      
+      if (sizeof(FLOAT) == sizeof(float))
+        {
+          if (ixp >= 0 && iyp >= 0) {
+            atomicAdd_float((float *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx1*vy1*v);
+            //            *((float *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1])) += (float)vx1*vy1*v;
+          }
+          
+          if (ixp+1 < blocks[1] && iyp >= 0) {
+            atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx0*vy1*v);
+            //            *((float *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1])) += (float)vx0*vy1*v;
+          }
+          
+          if (ixp >= 0 && iyp+1 < blocks[0]) {
+            atomicAdd_float((float *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx1*vy0*v);
+            //            *((float *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1])) += (float)vx1*vy0*v;
+          }
+          
+          if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
+            atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx0*vy0*v);
+            //            *((float *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1])) += (float)vx0*vy0*v;
           }
         }
       else
@@ -1300,3 +1464,4 @@ calc_feature
 
 
 }
+#endif

@@ -96,10 +96,11 @@ int   *ini_featsize(Model_info *MI);                        //initialize feature
 FLOAT *Ipl_to_FLOAT(IplImage *Input);                                             //get intensity data (FLOAT) of input
 void   free_features(FLOAT **features,Model_info *MI);                            //release features
 FLOAT *calc_feature(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin);                  //calculate HOG features
-FLOAT *calc_feature_byGPU(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin);                  //calculate HOG features
+FLOAT *calc_feature_byGPU(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin);            //calculate HOG features
 void   ini_thread_data(thread_data *TD,FLOAT *IM,int *INSIZE,int sbin,int level); //for thread-initialization
 //unsigned __stdcall feat_calc(void *thread_arg);												//for thread_process													
 void* feat_calc(void *thread_arg); //for thread_process
+void feat_calc_byGPU(FLOAT **resized_image, int *resized_image_size, int sbin, int sbin2, int interval, int max_scale, FLOAT **output_feature, int *FTSIZE ); 
 
 //main function to calculate feature pyramid
 FLOAT **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,FLOAT *scale);		//calculate feature pyramid (extended to detect.c)
@@ -459,7 +460,6 @@ FLOAT *calc_feature
   exit(1);                                      \
   }
 
-//#define DEBUG
 #define USE_TEX
 
 FLOAT *calc_feature_byGPU
@@ -496,8 +496,6 @@ FLOAT *calc_feature_byGPU
   FLOAT *feat = (FLOAT *)calloc(out[0]*out[1]*out[2], sizeof(FLOAT));
   
   
-#ifndef DEBUG
-
   CUresult res;
   
   /* allocate GPU memory */
@@ -524,9 +522,6 @@ FLOAT *calc_feature_byGPU
   res = cuMemcpyHtoD(hist_dev, hist, blocks[0]*blocks[1]*18*sizeof(FLOAT));
   MY_CUDA_CHECK(res, "cuMemcpyHtoD(hist_dev)");
 
-
-  
-#ifdef USE_TEX
 
   /* get handle to a texture memory on GPU */
   CUtexref resized_image_texref, resized_image_size_texref;
@@ -580,17 +575,6 @@ FLOAT *calc_feature_byGPU
     (void *)&sbin
   };
 
-#else
-
-  void *kernel_args[] = {
-    &resized_image_dev,
-    &resized_image_size_dev,
-    &hist_dev,
-    (void *)&sbin
-  };
-
-#endif    
-  
   /* decide CUDA block shape */
   int max_thread_num = 0;
   res =cuDeviceGetAttribute(&max_thread_num, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, dev[0]);
@@ -646,100 +630,6 @@ FLOAT *calc_feature_byGPU
   res = cuMemFree(hist_dev);
   MY_CUDA_CHECK(res, "cuMemFree(hist_dev)");
   
-#else
-
-  for (int x=1; x<visible[1]-1; x++) {
-    for (int y=1; y<visible[0]-1; y++) {
-      
-      /* first color channel */
-      FLOAT *s  = SRC + min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
-      FLOAT  dy = *(s+1) - *(s-1);
-      FLOAT  dx = *(s+dims[0]) - *(s-dims[0]);
-      FLOAT  v  = dx*dx + dy*dy;
-
-      /* second color channel */
-      s += dims[0]*dims[1];
-      FLOAT dy2 = *(s+1) - *(s-1);
-      FLOAT dx2 = *(s+dims[0]) - *(s-dims[0]);
-      FLOAT v2  = dx2*dx2 + dy2*dy2;
-      
-      /* third color channel */
-      s += dims[0]*dims[1];
-      FLOAT dy3 = *(s+1) - *(s-1);
-      FLOAT dx3 = *(s+dims[0]) - *(s-dims[0]);
-      FLOAT v3  = dx3*dx3 + dy3*dy3;
-
-      /* pick channel with strongest gradient */
-      if (v2 > v) {
-        v  = v2;
-        dx = dx2;
-        dy = dy2;
-      }
-      if (v3 > v) {
-        v  = v3;
-        dx = dx3;
-        dy = dy3;
-      }
-    
-      /* snap to one of 18 orientations */
-      FLOAT best_dot = 0;
-      int   best_o   = 0;
-      for (int o=0; o<9; o++) {
-        FLOAT dot = Hcos[o]*dx + Hsin[o]*dy; 
-        
-        if (dot > best_dot) {
-          best_dot = dot;
-          best_o   = o;
-        }
-        else if (-dot > best_dot) {
-          best_dot = -dot;
-          best_o   = o + 9;
-        }
-        
-      }
-      
-      /*add to 4 histgrams aroud pixel using linear interpolation*/
-      FLOAT xp  = ((FLOAT)x+0.5)/(FLOAT)sbin - 0.5;
-      FLOAT yp  = ((FLOAT)y+0.5)/(FLOAT)sbin - 0.5;
-      int   ixp = (int)floor(xp);
-      int   iyp = (int)floor(yp);
-      FLOAT vx0 = xp - ixp;
-      FLOAT vy0 = yp - iyp;
-      FLOAT vx1 = 1.0 - vx0;
-      FLOAT vy1 = 1.0 - vy0;
-      v = sqrt(v);
-      
-      if (ixp >= 0 && iyp >= 0) {
-        *(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]) += vx1*vy1*v;
-      }
-      
-      if (ixp+1 < blocks[1] && iyp >= 0) {
-        *(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]) += vx0*vy1*v;
-      }
-      
-      if (ixp >= 0 && iyp+1 < blocks[0]) {
-        *(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]) += vx1*vy0*v;
-      }
-      
-      if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
-        *(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]) += vx0*vy0*v;
-      }
-    }
-  }
-#endif
-  
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -941,8 +831,609 @@ void* feat_calc(void *thread_arg)
   //return(0);
 
   //  pthread_exit((void*)thread_arg);
-
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void feat_calc_byGPU
+(
+ FLOAT **resized_image, 
+ int *resized_image_size,
+ int sbin, 
+ int sbin2,
+ int interval,
+ int max_scale,
+ FLOAT **output_feature,
+ int *FTSIZE
+ ) 
+{
+  CUresult res;
+  int LEN = interval + max_scale;
+
+  /****************************************************************************************/
+  /* for time measurement */
+  /****************************************************************************************/
+  CUevent memcpy_start, memcpy_end;
+  CUevent kernel_start, kernel_end;
+  CUevent others_start, others_end;
+
+  /* create events */
+  res = cuEventCreate(&memcpy_start, CU_EVENT_DEFAULT);
+  MY_CUDA_CHECK(res, "cuEventCreate(memcpy_start)");
+
+  res = cuEventCreate(&memcpy_end, CU_EVENT_DEFAULT);
+  MY_CUDA_CHECK(res, "cuEventCreate(memcpy_start)");
+
+  res = cuEventCreate(&kernel_start, CU_EVENT_DEFAULT);
+  MY_CUDA_CHECK(res, "cuEventCreate(memcpy_start)");
+
+  res = cuEventCreate(&kernel_end, CU_EVENT_DEFAULT);
+  MY_CUDA_CHECK(res, "cuEventCreate(memcpy_start)");
+
+  res = cuEventCreate(&others_start, CU_EVENT_DEFAULT);
+  MY_CUDA_CHECK(res, "cuEventCreate(memcpy_start)");
+
+  res = cuEventCreate(&others_end, CU_EVENT_DEFAULT);
+  MY_CUDA_CHECK(res, "cuEventCreate(memcpy_start)");
+  /****************************************************************************************/
+  /****************************************************************************************/
+
+
+  /* Output features size(Output) */
+  //    int out[3];
+  int *dst_out = (int *)calloc(LEN*3, sizeof(int));
+  int **out = (int **)malloc(LEN*sizeof(int*));
+  unsigned long long int ptr_out = (unsigned long long int)dst_out;
+  for (int ss=0; ss<LEN; ss++)
+    {
+      out[ss] = (int *)ptr_out;
+      ptr_out += (unsigned long long int)3*sizeof(int);
+    }
+  
+
+  /* calculate sum size of calculate resion 
+     and search max value of "visible" */
+  int sum_size_hist  = 0;
+  int sum_size_norm  = 0;
+  int sum_size_feat  = 0;
+  int sum_size_image = 0;
+  int max_visible[2] = {0, 0};
+
+  for (int ss=0; ss<LEN; ss++) {
+
+    int height = resized_image_size[ss*3];
+    int width  = resized_image_size[ss*3 + 1];
+    int depth  = resized_image_size[ss*3 + 2];
+    int sbin_inner = (ss < interval) ? sbin2 : sbin;
+
+    /* size of Histgrams and Norm calculation space */
+    int blocks[2] = {
+      (int)floor((double)height/(double)sbin_inner + 0.5),
+      (int)floor((double)width/(double)sbin_inner + 0.5)
+    };
+    out[ss][0] = max_i(blocks[0]-2, 0);
+    out[ss][1] = max_i(blocks[1]-2, 0);
+    out[ss][2] = 27+4;
+    
+    sum_size_hist  += blocks[0]*blocks[1]*18*sizeof(FLOAT);
+    sum_size_norm  += blocks[0]*blocks[1]*sizeof(FLOAT);
+    sum_size_feat  += out[ss][0]*out[ss][1]*out[ss][2]*sizeof(FLOAT);
+    sum_size_image += height*width*depth*sizeof(FLOAT);
+    
+    max_visible[0] = (max_visible[0] < blocks[0]*sbin_inner) ? blocks[0]*sbin_inner : max_visible[0];
+    max_visible[1] = (max_visible[1] < blocks[1]*sbin_inner) ? blocks[1]*sbin_inner : max_visible[1];
+  }
+
+
+  /* allocat calculate region on memory */
+  FLOAT *dst_hist;
+  res = cuMemHostAlloc((void **)(&dst_hist), sum_size_hist, CU_MEMHOSTALLOC_PORTABLE);
+  MY_CUDA_CHECK(res, "cuMemAllocHost(hist)");
+  memset(dst_hist, 0, sum_size_hist);
+  FLOAT *dst_norm = (FLOAT *)calloc(sum_size_norm, 1);
+  FLOAT *dst_feat = (FLOAT *)calloc(sum_size_feat, 1);
+
+  FLOAT **hist = (FLOAT **)calloc(LEN, sizeof(FLOAT *));
+  FLOAT **norm = (FLOAT **)calloc(LEN, sizeof(FLOAT *));
+  FLOAT **feat = (FLOAT **)calloc(LEN, sizeof(FLOAT *));
+
+  unsigned long long int ptr_hist = (unsigned long long int)dst_hist;
+  unsigned long long int ptr_norm = (unsigned long long int)dst_norm;
+  unsigned long long int ptr_feat = (unsigned long long int)dst_feat;
+
+  for (int ss=0; ss<LEN; ss++) {
+    int height = resized_image_size[ss*3];
+    int width  = resized_image_size[ss*3 + 1];
+    int depth  = resized_image_size[ss*3 + 2];
+    int sbin_inner = (ss < interval) ? sbin2 : sbin;
+
+    /* size of Histgrams and Norm calculation space */
+    int blocks[2] = {
+      (int)floor((double)height/(double)sbin_inner + 0.5),
+      (int)floor((double)width/(double)sbin_inner + 0.5)
+    };
+
+    /* distribute memory regions  */
+    hist[ss] = (FLOAT *)(ptr_hist);
+    ptr_hist += (unsigned long long int)blocks[0]*blocks[1]*18*sizeof(FLOAT);
+    norm[ss] = (FLOAT *)(ptr_norm);
+    ptr_norm += (unsigned long long int)blocks[0]*blocks[1]*sizeof(FLOAT);
+    feat[ss] = (FLOAT *)(ptr_feat);
+    ptr_feat += (unsigned long long int)out[ss][0]*out[ss][1]*out[ss][2]*sizeof(FLOAT);
+
+  }
+
+  
+  /* allocate GPU memory */
+  CUdeviceptr resized_image_dev;
+  res = cuMemAlloc(&resized_image_dev, sum_size_image);
+  MY_CUDA_CHECK(res, "cuMemAlloc(resized_image_dev)");
+  
+  CUdeviceptr resized_image_size_dev;
+  res = cuMemAlloc(&resized_image_size_dev, LEN*3*sizeof(int));
+  MY_CUDA_CHECK(res, "cuMemAlloc(resized_image_size_dev)");
+  
+  CUdeviceptr hist_dev;
+  res = cuMemAlloc(&hist_dev, sum_size_hist);
+  MY_CUDA_CHECK(res, "cuMemAlloc(hist_dev)");
+  
+
+  /****************************************************************************************/
+  /* for time measurement */
+  /****************************************************************************************/
+  res = cuEventRecord(memcpy_start, NULL);
+  MY_CUDA_CHECK(res, "cuEventRecord(memcpy_start)");
+  /****************************************************************************************/
+  /****************************************************************************************/
+
+  /*upload data to GPU*/
+  unsigned long long int ptr_resized_image_dev = (unsigned long long int)resized_image_dev;
+  printf("\n");
+  for (int ss=0; ss<LEN; ss++)
+    {
+      int height = resized_image_size[ss*3];
+      int width  = resized_image_size[ss*3 + 1];
+      int depth  = resized_image_size[ss*3 + 2];
+
+       res = cuMemcpyHtoD((CUdeviceptr)ptr_resized_image_dev, (void *)(&resized_image[ss][0]), height*width*depth*sizeof(FLOAT));
+      MY_CUDA_CHECK(res, "cuMemcpyHtoD(resized_image_dev)");
+
+      ptr_resized_image_dev += (unsigned long long int)height*width*depth*sizeof(FLOAT);
+
+    }
+ 
+  res = cuMemcpyHtoD(resized_image_size_dev, resized_image_size, LEN*3*sizeof(int));
+  MY_CUDA_CHECK(res, "cuMemcpyHtoD(resized_image_size_dev)");
+  
+  
+  res = cuMemcpyHtoD(hist_dev, &hist[0][0], sum_size_hist);
+  MY_CUDA_CHECK(res, "cuMemcpyHtoD(hist_dev)");
+  
+
+  /****************************************************************************************/
+  /* for time measurement */
+  /****************************************************************************************/
+  res = cuEventRecord(memcpy_end, NULL);
+  MY_CUDA_CHECK(res, "cuEventRecord(memcpy_end)");
+  cuEventSynchronize(memcpy_end);
+  MY_CUDA_CHECK(res, "cuEventSynchronize(memcpy_end)");
+  /****************************************************************************************/
+  /****************************************************************************************/
+
+  
+  /* get handle to a texture memory on GPU */
+  CUtexref resized_image_texref, resized_image_size_texref;
+  if (sizeof(FLOAT) == sizeof(float))
+    {
+      res = cuModuleGetTexRef(&resized_image_texref, module[0], "resized_image");
+      MY_CUDA_CHECK(res, "cuModuleGetTexRef(resized_image)");
+    }
+  else
+    {
+      res = cuModuleGetTexRef(&resized_image_texref, module[0], "resized_image_double");
+      MY_CUDA_CHECK(res, "cuModuleGetTexRef(resized_image)");
+    }
+  
+  res = cuModuleGetTexRef(&resized_image_size_texref, module[0], "resized_image_size");
+  MY_CUDA_CHECK(res, "cuModuleGetTexRef(resized_image_size)");
+  
+  
+  /* bind to texture memory on GPU */
+  res = cuTexRefSetAddress(NULL, resized_image_texref, resized_image_dev, sum_size_image);
+  MY_CUDA_CHECK(res, "cuTexRefAddress(resized_image_dev)");
+  
+  res = cuTexRefSetAddress(NULL, resized_image_size_texref, resized_image_size_dev, LEN*3*sizeof(int));
+  MY_CUDA_CHECK(res, "cuTexRefAddress(resized_image_size_dev)");
+  
+  
+  /* texture memory configuration */
+  res = cuTexRefSetFlags(resized_image_texref, CU_TRSF_NORMALIZED_COORDINATES);
+  MY_CUDA_CHECK(res, "cuTexRefSetFlags(resized_image_texref)");
+  
+  res = cuTexRefSetFlags(resized_image_size_texref, CU_TRSF_NORMALIZED_COORDINATES);
+  MY_CUDA_CHECK(res, "cuTexRefSetFlags(resized_image_size_texref)");
+  
+  if (sizeof(FLOAT) == sizeof(float)) 
+    {
+      res = cuTexRefSetFormat(resized_image_texref, CU_AD_FORMAT_FLOAT, 1);
+      MY_CUDA_CHECK(res, "cuTexRefSetFormat(resized_image_texref)");
+    }
+  else
+    {
+      res = cuTexRefSetFormat(resized_image_texref, CU_AD_FORMAT_UNSIGNED_INT32, 2);
+      MY_CUDA_CHECK(res, "cuTexRefSetFormat(resized_image_texref)");
+    }
+  
+  res = cuTexRefSetFormat(resized_image_size_texref, CU_AD_FORMAT_SIGNED_INT32, 1);
+  MY_CUDA_CHECK(res, "cuTexRefSetFormat(resized_image_size_texref)");
+  
+  
+  void *kernel_args[] = {
+    &hist_dev,
+    (void *)&sbin,
+    (void *)&sbin2,
+    (void *)&interval,
+    (void *)&max_scale
+  };
+
+  /* decide CUDA block shape */
+  int max_thread_num = 0;
+  res =cuDeviceGetAttribute(&max_thread_num, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, dev[0]);
+  MY_CUDA_CHECK(res, "cuDeviceGetAttribure()");
+  
+  //  int thread_num_x = (max_visible[1]-1 < sqrt(max_thread_num/LEN)) ? 
+  int thread_num_x = (max_visible[1]-1 < sqrt(max_thread_num)) ? 
+    max_visible[1]-1 : sqrt(max_thread_num);
+  //  int thread_num_y = (max_visible[0]-1 < sqrt(max_thread_num/LEN)) ? 
+  int thread_num_y = (max_visible[0]-1 < sqrt(max_thread_num)) ? 
+    max_visible[0]-1 : sqrt(max_thread_num);
+  
+  int block_num_x = (max_visible[1]-1) / thread_num_x;
+  int block_num_y = (max_visible[0]-1) / thread_num_y;
+  if ((max_visible[1]-1) % thread_num_x != 0) block_num_x++;
+  if ((max_visible[0]-1) % thread_num_y != 0) block_num_y++;
+  int block_num_z = LEN;  
+
+  int sharedMemBytes = 0;
+
+
+  /****************************************************************************************/
+  /* for time measurement */
+  /****************************************************************************************/
+  res = cuEventRecord(kernel_start, NULL);
+  MY_CUDA_CHECK(res, "cuEventRecord(kernel_start)");
+  /****************************************************************************************/
+  /****************************************************************************************/
+
+
+  
+  /* execute GPU function */ 
+  res = cuLaunchKernel(
+                       func_calc_feature[0], // call function
+                       block_num_x,          // gridDimX
+                       block_num_y,          // gridDimY
+                       block_num_z,          // gridDimZ
+                       thread_num_x,         // blockDimX
+                       thread_num_y,         // blockDimY
+                       1,                    // blockDimZ
+                       sharedMemBytes,       // sharedMemBytes
+                       NULL,                 // hStream
+                       kernel_args,          // kernel Parameter
+                       NULL                  // extra
+                       );
+  MY_CUDA_CHECK(res, "cuLaunchKernel(calc_feature)");
+  
+  
+  /* synchronize GPU threads */
+  res = cuCtxSynchronize();
+  MY_CUDA_CHECK(res, "cuCtxSynchronize(calc_feat)");
+  
+
+  /****************************************************************************************/
+  /* for time measurement */
+  /****************************************************************************************/
+  res = cuEventRecord(kernel_end, NULL);
+  MY_CUDA_CHECK(res, "cuEventRecord(kernel_end)");
+  cuEventSynchronize(kernel_end);
+  MY_CUDA_CHECK(res, "cuEventSynchronize(kernel_end)");
+  /****************************************************************************************/
+  /****************************************************************************************/
+
+
+
+  /* download data from GPU */
+  res = cuMemcpyDtoH((void *)(&hist[0][0]), hist_dev, sum_size_hist);
+  MY_CUDA_CHECK(res, "cuMemcpyDtoH(hist_dev)");
+  
+  
+  /* free GPU memory */
+  res = cuMemFree(resized_image_dev);
+  MY_CUDA_CHECK(res, "cuMemFree(resized_image_dev)");
+  
+  res = cuMemFree(resized_image_size_dev);
+  MY_CUDA_CHECK(res, "cuMemFree(resized_image_size_dev)");
+  
+  res = cuMemFree(hist_dev);
+  MY_CUDA_CHECK(res, "cuMemFree(hist_dev)");
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  /****************************************************************************************/
+  /* for time measurement */
+  /****************************************************************************************/
+  res = cuEventRecord(others_start, NULL);
+  MY_CUDA_CHECK(res, "cuEventRecord(others_start)");
+  /****************************************************************************************/
+  /****************************************************************************************/
+
+
+
+  for (int ss=0; ss<LEN; ss++)
+    {
+      const int height  = resized_image_size[ss*3];
+      const int width   = resized_image_size[ss*3 + 1];
+      const int dims[2] = {height, width};
+      int sbin_inner = (ss < interval) ? sbin2 : sbin;
+      
+      /* size of Histgrams and Norm calculation space size */
+      const int blocks[2] = {
+        (int)floor((double)height/(double)sbin_inner + 0.5), 
+        (int)floor((double)width/(double)sbin_inner + 0.5)
+      };
+      
+      
+      /* compute energy in each block by summing over orientations */
+#if 1
+      for (int o=0; o<9; o++) {
+        FLOAT *src1 = hist[ss] + o*blocks[0]*blocks[1];
+        FLOAT *src2 = hist[ss] + (o+9)*blocks[0]*blocks[1];
+        FLOAT *dst  = norm[ss];
+        FLOAT *end  = norm[ss] + blocks[0]*blocks[1];
+        
+        while(dst < end) {
+          *(dst++) += (*src1 + *src2) * (*src1 + *src2);
+          src1++;
+          src2++;
+        }
+      }
+#else
+      for (int o=0; o<18; o++) {
+        FLOAT *src1 = hist[ss] + o*blocks[0]*blocks[1];
+        FLOAT *dst  = norm[ss];
+        FLOAT *end  = norm[ss] + blocks[0]*blocks[1];
+        
+        while(dst < end) {
+          *(dst++) += (*src1) * (*src1);
+          src1++;
+        }
+      }
+#endif
+      
+      /* compute featuers */
+      for (int x=0; x<out[ss][1]; x++) {
+        for (int y=0; y<out[ss][0]; y++) {
+          FLOAT *dst = feat[ss] + x*out[ss][0] + y;
+          FLOAT *src, *p, n1, n2, n3, n4;
+          
+          p = norm[ss] + (x+1)*blocks[0] + y+1;
+          n1 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
+          
+          p = norm[ss] + (x+1)*blocks[0] + y;
+          n2 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
+          
+          p = norm[ss] + x*blocks[0] + y+1;
+          n3 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
+          
+          p = norm[ss] + x*blocks[0] + y;
+          n4 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
+          
+          FLOAT t1 = 0;
+          FLOAT t2 = 0;
+          FLOAT t3 = 0;
+          FLOAT t4 = 0;
+          
+          /* contrast-sensitive features */
+          src = hist[ss] + (x+1)*blocks[0] + (y+1);
+          for (int o=0; o<18; o++) {
+            FLOAT h1 = min_2(*src * n1);
+            FLOAT h2 = min_2(*src * n2);
+            FLOAT h3 = min_2(*src * n3);
+            FLOAT h4 = min_2(*src * n4);
+            
+            *dst = 0.5 * (h1 + h2 + h3 + h4);
+            
+            t1 += h1;
+            t2 += h2;
+            t3 += h3;
+            t4 += h4;
+            
+            dst += out[ss][0]*out[ss][1];
+            src += blocks[0]*blocks[1];
+          }
+          
+          /* contrast-insensitive features */
+          src = hist[ss] + (x+1)*blocks[0] + (y+1);
+          for (int o=0; o<9; o++) {
+            FLOAT sum = *src + *(src + 9*blocks[0]*blocks[1]);
+            FLOAT h1 = min_2(sum * n1);
+            FLOAT h2 = min_2(sum * n2);
+            FLOAT h3 = min_2(sum * n3);
+            FLOAT h4 = min_2(sum * n4);
+            
+            *dst = 0.5 * (h1 + h2 + h3 + h4);
+            
+            dst += out[ss][0]*out[ss][1];
+            src += blocks[0]*blocks[1];
+          }
+          
+          /* texture features */
+          *dst = 0.2357 * t1;
+          dst += out[ss][0]*out[ss][1];
+          
+          *dst = 0.2357 * t2;
+          dst += out[ss][0]*out[ss][1];
+          
+          *dst = 0.2357 * t3;
+          dst += out[ss][0]*out[ss][1];
+          
+          *dst = 0.2357 * t4;
+        }
+      }
+      
+      /* assign calculate results */
+      output_feature[ss] = feat[ss];
+      
+      /* size of feature(output) */    
+      FTSIZE[ss*2] = out[ss][0];
+      FTSIZE[ss*2 + 1] = out[ss][1];
+      
+    }
+
+
+
+  /****************************************************************************************/
+  /* for time measurement */
+  /****************************************************************************************/
+  res = cuEventRecord(others_end, NULL);
+  MY_CUDA_CHECK(res, "cuEventRecord(others_end)");
+  cuEventSynchronize(others_end);
+  MY_CUDA_CHECK(res, "cuEventSynchronize(othres_end)");
+  /****************************************************************************************/
+  /****************************************************************************************/
+
+  
+  res = cuMemFreeHost(&hist[0][0]);
+  MY_CUDA_CHECK(res, "cuMemFreeHost(hist)");
+  
+  free(hist);
+  free(&norm[0][0]);
+  free(norm);
+  free(&out[0][0]);
+  free(out);
+  
+  
+  
+  /****************************************************************************************/
+  /* for time measurement */
+  /****************************************************************************************/
+
+  /* display elapsed time for each part */
+  float elapsed_time;
+  res = cuEventElapsedTime(&elapsed_time, memcpy_start, memcpy_end);
+  MY_CUDA_CHECK(res, "cuEventElapsedTime(memcpy)");
+  printf("memcpy %f[ms]\n", elapsed_time);
+
+  res = cuEventElapsedTime(&elapsed_time, kernel_start, kernel_end);
+  MY_CUDA_CHECK(res, "cuEventElapsedTime(kernel)");
+  printf("kernel %f[ms]\n", elapsed_time);
+
+  res = cuEventElapsedTime(&elapsed_time, others_start, others_end);
+  MY_CUDA_CHECK(res, "cuEventElapsedTime(others)");
+  printf("others %f[ms]\n", elapsed_time);
+
+
+  /* destroy events */
+  res = cuEventDestroy(memcpy_start);
+  MY_CUDA_CHECK(res, "cuEventDestroy(memcpy_start)");
+  
+  res = cuEventDestroy(memcpy_end);
+  MY_CUDA_CHECK(res, "cuEventDestroy(memcpy_start)");
+  
+  res = cuEventDestroy(kernel_start);
+  MY_CUDA_CHECK(res, "cuEventDestroy(memcpy_start)");
+
+  res = cuEventDestroy(kernel_end);
+  MY_CUDA_CHECK(res, "cuEventDestroy(memcpy_start)");
+  
+  res = cuEventDestroy(others_start);
+  MY_CUDA_CHECK(res, "cuEventDestroy(memcpy_start)");
+  
+  res = cuEventDestroy(others_end);
+  MY_CUDA_CHECK(res, "cuEventDestroy(memcpy_start)");
+  
+  /****************************************************************************************/
+  /****************************************************************************************/
+  
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //void initialize thread data
 void ini_thread_data(thread_data *TD,FLOAT *IM,int *INSIZE,int sbin,int level)
@@ -965,6 +1456,8 @@ void ini_thread_data(thread_data *TD,FLOAT *IM,int *INSIZE,int sbin,int level)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //calculate feature pyramid (extended to main.cpp)
+
+//#define ORIGINAL
 
 //calculate feature pyramid
 FLOAT **calc_f_pyramid
@@ -999,7 +1492,31 @@ FLOAT **calc_f_pyramid
   FLOAT **resized_image      = (FLOAT**)calloc(LEN, sizeof(FLOAT*)); // リサイズされた画像 // (元RIM_S)
   int    *resized_image_size = (int*)calloc(LEN*3, sizeof(int));     // リサイズされた画像のサイズ // (元RI_S)
   int     t_count            = 0;
+
+  CUresult res;
+  res = cuCtxSetCurrent(ctx[0]);
+  if (res != CUDA_SUCCESS) {
+    printf("cuCtxCurrent(ctx[0]) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+    exit(1);
+  }
   
+
+  /*****************************************************************/
+  // for time measurement
+  /*****************************************************************/
+  CUevent resize_start, resize_end;
+  res = cuEventCreate(&resize_start, CU_EVENT_DEFAULT);
+  MY_CUDA_CHECK(res, "cuEventCreate(resize_start)");
+  res = cuEventCreate(&resize_end, CU_EVENT_DEFAULT);
+  MY_CUDA_CHECK(res, "cuEventCreate(resize_end)");
+
+  cuEventRecord(resize_start, NULL);
+  MY_CUDA_CHECK(res, "cuEventRecord(resize_start)");
+  /*****************************************************************/
+  /*****************************************************************/
+  
+
+
   /* calculate resized image */
   /* resize画像がLEN枚生成される */
   for(int ii=0; ii<interval; ii++) 
@@ -1034,15 +1551,33 @@ FLOAT **calc_f_pyramid
 
     }
 
-  CUresult res;
-  res = cuCtxSetCurrent(ctx[0]);
-  if (res != CUDA_SUCCESS) {
-    printf("cuCtxCurrent(ctx[0]) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
-    exit(1);
-  }
+
+  /*****************************************************************/
+  // for time measurement
+  /*****************************************************************/
+  cuEventRecord(resize_end, NULL);
+  MY_CUDA_CHECK(res, "cuEventRecord(resize_end)");
+  cuEventSynchronize(resize_end);
+  MY_CUDA_CHECK(res, "cuEventSynchronize(resize_end)");
+
+  float elapsed_time;
+  res = cuEventElapsedTime(&elapsed_time, resize_start, resize_end);
+  MY_CUDA_CHECK(res, "cuEventElapsedTime(resize)");
+  printf("\nresize image %f", elapsed_time);
+
+  res = cuEventDestroy(resize_start);
+  MY_CUDA_CHECK(res, "cuEventDestroy(resize_start)");
+  cuEventDestroy(resize_end);
+  MY_CUDA_CHECK(res, "cuEventDestroy(resize_end)");
+  /*****************************************************************/
+  /*****************************************************************/
+
+
 
   
   /* calculate HOG feature for each resized image */
+#ifdef ORIGINAL
+
   for(int ii=0; ii<interval; ii++)
     {
       FLOAT st = 1.0/pow(sc, ii);
@@ -1077,7 +1612,7 @@ FLOAT **calc_f_pyramid
       //   {printf("Error thread\n"); exit(0);}
       feat_calc((void *)&td[t_count]);
       t_count++;
-      
+
       /* remained resolutions (for root_only) */
       for(int jj=ii+interval; jj<max_scale; jj+=interval)
         {	
@@ -1096,6 +1631,56 @@ FLOAT **calc_f_pyramid
         }
     }
 
+#else
+  /*****************************************************************/
+  // for time measurement
+  /*****************************************************************/
+  CUevent func_start, func_end;
+  res = cuEventCreate(&func_start, CU_EVENT_DEFAULT);
+  MY_CUDA_CHECK(res, "cuEventCreate(func_start)");
+  res = cuEventCreate(&func_end, CU_EVENT_DEFAULT);
+  MY_CUDA_CHECK(res, "cuEventCreate(func_end)");
+
+  cuEventRecord(func_start, NULL);
+  MY_CUDA_CHECK(res, "cuEventRecord(func_start)");
+  /*****************************************************************/
+  /*****************************************************************/
+
+  feat_calc_byGPU(
+                resized_image, 
+                resized_image_size,
+                sbin,
+                sbin2,
+                interval,
+                max_scale,
+                feat, 
+                FTSIZE
+                );
+
+  /*****************************************************************/
+  // for time measurement
+  /*****************************************************************/
+  cuEventRecord(func_end, NULL);
+  MY_CUDA_CHECK(res, "cuEventRecord(func_end)");
+  cuEventSynchronize(func_end);
+  MY_CUDA_CHECK(res, "cuEventSynchronize(func_end)");
+
+  res = cuEventElapsedTime(&elapsed_time, func_start, func_end);
+  MY_CUDA_CHECK(res, "cuEventElapsedTime(func)");
+  printf("\nfeat_calc_byGPU %f\n", elapsed_time);
+
+  res = cuEventDestroy(func_start);
+  MY_CUDA_CHECK(res, "cuEventDestroy(func_start)");
+  cuEventDestroy(func_end);
+  MY_CUDA_CHECK(res, "cuEventDestroy(func_end)");
+  /*****************************************************************/
+  /*****************************************************************/
+
+
+#endif
+
+
+#ifdef ORIGINAL
 
   /* get thread data */
   for(int ss=0; ss<LEN; ss++)
@@ -1107,6 +1692,8 @@ FLOAT **calc_f_pyramid
 
       //close(ts[ss]);
     }
+
+#endif
   
   /* release original image */
   s_free(org_image);
@@ -1137,14 +1724,19 @@ FLOAT **calc_f_pyramid
 
 void free_features(FLOAT **features,Model_info *MI)
 {
-	int LofFeat = MI->max_scale + MI->interval;
-	if(features != NULL)
+  int LofFeat = MI->max_scale + MI->interval;
+  if(features != NULL)
 	{
-		for (int ii=0; ii<LofFeat; ii++)
-		{
-			s_free(features[ii]);
-		}
-		s_free(features);
+#ifdef ORIGINAL
+      for (int ii=0; ii<LofFeat; ii++)
+      {
+      	s_free(features[ii]);
+      }
+      s_free(features);
+#else
+      free(&features[0][0]);
+      s_free(features);
+#endif
 	}
 }
 
