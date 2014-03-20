@@ -1,6 +1,11 @@
 /* typedef to switch float and double */
+#define USE_FLOAT_AS_DECIMAL
+
+#ifdef USE_FLOAT_AS_DECIMAL
 typedef float FLOAT;
-//typedef double FLOAT;
+#else
+typedef double FLOAT;
+#endif
 
 #ifndef TVSUB
 #define TVSUB

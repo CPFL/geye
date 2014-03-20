@@ -1,6 +1,7 @@
-#include<stdio.h>
-#include<math.h>
-#include"for_use_GPU.h"
+#include <stdio.h>
+#include <math.h>
+#include "for_use_GPU.h"
+#include "calc_feature_conf.h"
 
 
 /* declaration of texture memory */
@@ -949,7 +950,7 @@ static inline int
 min_i(int x, int y) 
 {return (x <= y ? x : y);}
 
-
+/*************************************************/
 /* atomic function dealing with double precision */
 __device__ 
 double 
@@ -963,8 +964,9 @@ atomicAdd_double(double *address, double val)
   }while(assumed != old);
   return __longlong_as_double(old);
 }
+/*************************************************/
 
-
+/************************************************/
 /* atomic function dealing with float precision */
 __device__
 void
@@ -972,201 +974,34 @@ atomicAdd_float(float *address, float val)
 {
   atomicAdd(address, val);      // atomicAdd must be called from "__device__" function
 }
+/*************************************************/
+
+/***********************************************************/
+/* function which cast from int2 to unsigned long long int */
+__device__
+unsigned long long int
+hiloint2uint64(int hi, int lo)
+{
+  int combined[] = {hi, lo};
+  return *reinterpret_cast<unsigned long long int*>(combined);
+}
+/***********************************************************/
+
 
 /* declaration of texture memory */
+#ifdef USE_FLOAT_AS_DECIMAL
 texture<float, cudaTextureType1D, cudaReadModeElementType> resized_image;
+#else
 texture<int2, cudaTextureType1D, cudaReadModeElementType>  resized_image_double;
+#endif
 texture<int , cudaTextureType1D, cudaReadModeElementType>  resized_image_size;
 
-
-//#define ORIGINAL
-
-#ifdef ORIGINAL
-
-extern "C"
-__global__
-void
-calc_feature
-(
- FLOAT *hist,
- int sbin
- )
-{
-  int x = blockIdx.x * blockDim.x + threadIdx.x;
-  int y = blockIdx.y * blockDim.y + threadIdx.y;
- 
-  const FLOAT Hcos[9] = {1.0000, 0.9397, 0.7660, 0.5000, 0.1736, -0.1736, -0.5000, -0.7660, -0.9397};
-  const FLOAT Hsin[9] = {0.0000, 0.3420, 0.6428, 0.8660, 0.9848, 0.9848, 0.8660, 0.6428, 0.3420};
-
-  /* input size */
-  const int height = tex1Dfetch(resized_image_size, 0);
-  const int width  = tex1Dfetch(resized_image_size, 1);
-  const int dims[2] = {height, width};
-
-  /* size of Histgrams and Norm calculation space */
-  const int blocks[2] = {
-    (int)floor((double)height/(double)sbin+0.5),
-    (int)floor((double)width/(double)sbin+0.5)
-  };
-  
-  /* Visible range (eliminate border blocks) */
-  const int visible[2] = {blocks[0]*sbin, blocks[1]*sbin};
-  
-
-  // for (int x=1; x<visible[1]-1; x++) {
-  //   for (int y=1; y<visible[0]-1; y++) {
-  if (1<=x && x<visible[1]-1 && 1<=y && y<visible[0]-1) 
-    {
-
-      /* first color channel */
-      int base_index = min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
-      FLOAT dx, dy;
-      if (sizeof(FLOAT) == sizeof(float))
-        {
-          dy = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
-          dx = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
-        }
-      else
-        {
-          int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
-          int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
-          dy = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-
-          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
-          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
-          dx = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-        }
-      FLOAT  v  = dx*dx + dy*dy;
-      
-      /* second color channel */
-      base_index += dims[0]*dims[1];
-      FLOAT dx2, dy2;
-      if (sizeof(FLOAT) == sizeof(float))
-        {
-          dy2 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
-          dx2 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
-        }
-      else
-        {
-          int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
-          int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
-          dy2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-
-          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
-          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
-          dx2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-        }
-      FLOAT v2  = dx2*dx2 + dy2*dy2;
-      
-      /* third color channel */
-      base_index += dims[0]*dims[1];
-      FLOAT dx3, dy3;
-      if (sizeof(FLOAT) == sizeof(float))
-        {
-          dy3 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
-          dx3 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
-        }
-      else
-        {
-          int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
-          int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
-          dy3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-
-          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
-          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
-          dx3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-        }
-      FLOAT v3  = dx3*dx3 + dy3*dy3;
-
-      /* pick channel with strongest gradient */
-      if (v2 > v) {
-        v  = v2;
-        dx = dx2;
-        dy = dy2;
-      }
-      if (v3 > v) {
-        v  = v3;
-        dx = dx3;
-        dy = dy3;
-      }
-      
-      /* snap to one of 18 orientations */
-      FLOAT best_dot = 0;
-      int   best_o   = 0;
-      for (int o=0; o<9; o++) {
-        FLOAT dot = Hcos[o]*dx + Hsin[o]*dy; 
-        
-        if (dot > best_dot) {
-          best_dot = dot;
-          best_o   = o;
-        }
-        else if (-dot > best_dot) {
-          best_dot = -dot;
-          best_o   = o + 9;
-        }
-        
-      }
-      
-      /*add to 4 histgrams aroud pixel using linear interpolation*/
-      FLOAT xp  = ((FLOAT)x+0.5)/(FLOAT)sbin - 0.5;
-      FLOAT yp  = ((FLOAT)y+0.5)/(FLOAT)sbin - 0.5;
-      int   ixp = (int)floor((double)xp);
-      int   iyp = (int)floor((double)yp);
-      FLOAT vx0 = xp - ixp;
-      FLOAT vy0 = yp - iyp;
-      FLOAT vx1 = 1.0 - vx0;
-      FLOAT vy1 = 1.0 - vy0;
-      v = sqrt((double)v);
-      
-      if (sizeof(FLOAT) == sizeof(float))
-        {
-          if (ixp >= 0 && iyp >= 0) {
-            atomicAdd_float((float *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx1*vy1*v);
-          }
-          
-          if (ixp+1 < blocks[1] && iyp >= 0) {
-            atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx0*vy1*v);
-          }
-          
-          if (ixp >= 0 && iyp+1 < blocks[0]) {
-            atomicAdd_float((float *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx1*vy0*v);
-          }
-          
-          if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
-            atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx0*vy0*v);
-          }
-        }
-      else
-        {
-          if (ixp >= 0 && iyp >= 0) {
-            atomicAdd_double((double *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (double)vx1*vy1*v);
-          }
-          
-          if (ixp+1 < blocks[1] && iyp >= 0) {
-            atomicAdd_double((double *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (double)vx0*vy1*v);
-          }
-          
-          if (ixp >= 0 && iyp+1 < blocks[0]) {
-            atomicAdd_double((double *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (double)vx1*vy0*v);
-          }
-          
-          if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
-            atomicAdd_double((double *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (double)vx0*vy0*v);
-          }
-        }
-      
-    }
-      
-      //   }
-      // }
-      
-}
+texture<int, cudaTextureType1D, cudaReadModeElementType>   image_idx_incrementer;
+texture<uint2, cudaTextureType1D, cudaReadModeElementType> hist_ptr_incrementer;
 
 
-
-#else  // ifdef ORIGINAL
-
-
+#ifndef USE_SHARED_MEM
+/* no shared memory version */
 
 extern "C"
 __global__
@@ -1180,8 +1015,10 @@ calc_feature
  int max_scale
  )
 {
+  /* index of each pixels */
   int x     = blockIdx.x * blockDim.x + threadIdx.x;
   int y     = blockIdx.y * blockDim.y + threadIdx.y;
+
   int level = blockIdx.z;
   int sbin  = (level < interval) ? sbin2 : sbin1;
   int LEN   = interval + max_scale;
@@ -1190,23 +1027,10 @@ calc_feature
   const FLOAT Hsin[9] = {0.0000, 0.3420, 0.6428, 0.8660, 0.9848, 0.9848, 0.8660, 0.6428, 0.3420};
 
   /* adjust pointer position */
-  unsigned long long int ptr_hist = (unsigned long long int)hist_top;
-  int base_index = 0;
-
-  for (int ss=0; ss<level; ss++) {
-    int dim0       = tex1Dfetch(resized_image_size, ss*3);
-    int dim1       = tex1Dfetch(resized_image_size, ss*3 + 1);
-    int dim2       = tex1Dfetch(resized_image_size, ss*3 + 2);
-    int sbin_inner = (ss < interval) ? sbin2 : sbin1;
-    int blocks0    = (int)floor((double)dim0/(double)sbin_inner + 0.5);
-    int blocks1    = (int)floor((double)dim1/(double)sbin_inner + 0.5);
-
-    base_index += dim0 * dim1 * dim2;
-
-    ptr_hist   += blocks0 * blocks1 * 18 * sizeof(FLOAT);
-
-  }
-  FLOAT *hist = (FLOAT *)ptr_hist;
+  int                     base_index      = tex1Dfetch(image_idx_incrementer, level);
+  uint2                   ptr_incrementer = tex1Dfetch(hist_ptr_incrementer, level);
+  unsigned long long int  ptr_hist        = (unsigned long long int)hist_top + hiloint2uint64(ptr_incrementer.x, ptr_incrementer.y);
+  FLOAT                  *hist            = (FLOAT *)ptr_hist;
 
   /* input size */
   const int height  = tex1Dfetch(resized_image_size, level*3);
@@ -1227,65 +1051,76 @@ calc_feature
   //   for (int y=1; y<visible[0]-1; y++) {
   if (1<=x && x<visible[1]-1 && 1<=y && y<visible[0]-1 && 0<=level && level <= LEN) 
     {
-
       /* first color channel */
       base_index += min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
       FLOAT dx, dy;
-      if (sizeof(FLOAT) == sizeof(float))
-        {
-          dy = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
-          dx = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
-        }
-      else
-        {
-          int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
-          int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
-          dy = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-          
-          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
-          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
-          dx = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-        }
+#ifdef USE_FLOAT_AS_DECIMAL
+      {
+        /* get "float" type values from texture memory */
+        dy = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+        dx = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+      }
+#else
+      int2 arg1;
+      int2 arg2;
+      
+      {
+        /* get "double" type values from texture memory */
+        arg1 = tex1Dfetch(resized_image_double, base_index + 1);
+        arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
+        dy = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+        
+        arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+        arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+        dx = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+      }
+#endif
       FLOAT  v  = dx*dx + dy*dy;
       
       /* second color channel */
       base_index += dims[0]*dims[1];
       FLOAT dx2, dy2;
-      if (sizeof(FLOAT) == sizeof(float))
-        {
-          dy2 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
-          dx2 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
-        }
-      else
-        {
-          int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
-          int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
-          dy2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-
-          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
-          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
-          dx2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-        }
+#ifdef USE_FLOAT_AS_DECIMAL
+      {
+        /* get "float" type values from texture memory */
+        dy2 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+        dx2 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+      }
+#else
+      {
+        /* get "double" type values from texture memory */
+        arg1 = tex1Dfetch(resized_image_double, base_index + 1);
+        arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
+        dy2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+        
+        arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+        arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+        dx2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+      }
+#endif
       FLOAT v2  = dx2*dx2 + dy2*dy2;
       
       /* third color channel */
       base_index += dims[0]*dims[1];
       FLOAT dx3, dy3;
-      if (sizeof(FLOAT) == sizeof(float))
-        {
-          dy3 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
-          dx3 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
-        }
-      else
-        {
-          int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
-          int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
-          dy3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-          
-          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
-          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
-          dx3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-        }
+#ifdef USE_FLOAT_AS_DECIMAL
+      {
+        /* get "float" type values from texture memory */
+        dy3 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+        dx3 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+      }
+#else
+      {
+        /* get "double" type values from texture memory */
+        arg1 = tex1Dfetch(resized_image_double, base_index + 1);
+        arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
+        dy3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+        
+        arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+        arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+        dx3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+      }
+#endif
       FLOAT v3  = dx3*dx3 + dy3*dy3;
       
       /* pick channel with strongest gradient */
@@ -1303,7 +1138,7 @@ calc_feature
       /* snap to one of 18 orientations */
       FLOAT best_dot = 0;
       int   best_o   = 0;
-
+      
 #pragma unroll 9
       for (int o=0; o<9; o++) {
         FLOAT dot = Hcos[o]*dx + Hsin[o]*dy; 
@@ -1329,53 +1164,323 @@ calc_feature
       FLOAT vy1 = 1.0 - vy0;
       v = sqrt((double)v);
       
-      if (sizeof(FLOAT) == sizeof(float))
-        {
-          if (ixp >= 0 && iyp >= 0) {
-            atomicAdd_float((float *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx1*vy1*v);
-            //            *((float *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1])) += (float)vx1*vy1*v;
-          }
-          
-          if (ixp+1 < blocks[1] && iyp >= 0) {
-            atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx0*vy1*v);
-            //            *((float *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1])) += (float)vx0*vy1*v;
-          }
-          
-          if (ixp >= 0 && iyp+1 < blocks[0]) {
-            atomicAdd_float((float *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx1*vy0*v);
-            //            *((float *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1])) += (float)vx1*vy0*v;
-          }
-          
-          if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
-            atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx0*vy0*v);
-            //            *((float *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1])) += (float)vx0*vy0*v;
-          }
+#ifdef USE_FLOAT_AS_DECIMAL
+      {
+        if (ixp >= 0 && iyp >= 0) {
+          atomicAdd_float((float *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx1*vy1*v);
+          //            *((float *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1])) += (float)vx1*vy1*v;
         }
-      else
-        {
-          if (ixp >= 0 && iyp >= 0) {
-            atomicAdd_double((double *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (double)vx1*vy1*v);
-          }
-          
-          if (ixp+1 < blocks[1] && iyp >= 0) {
-            atomicAdd_double((double *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (double)vx0*vy1*v);
-          }
-          
-          if (ixp >= 0 && iyp+1 < blocks[0]) {
-            atomicAdd_double((double *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (double)vx1*vy0*v);
-          }
-          
-          if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
-            atomicAdd_double((double *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (double)vx0*vy0*v);
-          }
+        
+        if (ixp+1 < blocks[1] && iyp >= 0) {
+          atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx0*vy1*v);
+          //            *((float *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1])) += (float)vx0*vy1*v;
         }
+        
+        if (ixp >= 0 && iyp+1 < blocks[0]) {
+          atomicAdd_float((float *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx1*vy0*v);
+          //            *((float *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1])) += (float)vx1*vy0*v;
+        }
+        
+        if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
+          atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx0*vy0*v);
+          //            *((float *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1])) += (float)vx0*vy0*v;
+        }
+      }
+#else
+      {
+        if (ixp >= 0 && iyp >= 0) {
+          atomicAdd_double((double *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (double)vx1*vy1*v);
+        }
+        
+        if (ixp+1 < blocks[1] && iyp >= 0) {
+          atomicAdd_double((double *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (double)vx0*vy1*v);
+        }
+        
+        if (ixp >= 0 && iyp+1 < blocks[0]) {
+          atomicAdd_double((double *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (double)vx1*vy0*v);
+        }
+        
+        if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
+          atomicAdd_double((double *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (double)vx0*vy0*v);
+        }
+      }
+#endif
       
     }
       
+  //   }
+  // }
+  
+}
+
+#else  // #ifndef USE_SHARED_MEM
+/* use shared memory version */
+
+extern "C"
+__global__
+void
+calc_feature
+(
+ FLOAT *hist_top,
+ int sbin1,
+ int sbin2,
+ int interval,
+ int max_scale
+ )
+{
+  int level = blockIdx.z;
+  int sbin  = (level < interval) ? sbin2 : sbin1;
+  int LEN   = interval + max_scale;
+
+  /* index of each pixel */
+  int x     = blockIdx.x * CELL_PER_BLOCK_Y * sbin + threadIdx.x;
+  int y     = blockIdx.y * CELL_PER_BLOCK_Y * sbin + threadIdx.y;
+
+  const FLOAT Hcos[9] = {1.0000, 0.9397, 0.7660, 0.5000, 0.1736, -0.1736, -0.5000, -0.7660, -0.9397};
+  const FLOAT Hsin[9] = {0.0000, 0.3420, 0.6428, 0.8660, 0.9848, 0.9848, 0.8660, 0.6428, 0.3420};
+
+  /* adjust pointer position */
+  int                     base_index      = tex1Dfetch(image_idx_incrementer, level);
+  uint2                   ptr_incrementer = tex1Dfetch(hist_ptr_incrementer, level);
+  unsigned long long int  ptr_hist        = (unsigned long long int)hist_top + hiloint2uint64(ptr_incrementer.x, ptr_incrementer.y);
+  FLOAT                  *hist            = (FLOAT *)ptr_hist;
+
+  /* input resized size */
+  const int height  = tex1Dfetch(resized_image_size, level*3);
+  const int width   = tex1Dfetch(resized_image_size, level*3 + 1);
+  const int dims[2] = {height, width};
+
+  /* size of Histgrams and Norm calculation space */
+  const int blocks[2] = {
+    (int)floor((double)height/(double)sbin+0.5),
+    (int)floor((double)width/(double)sbin+0.5)
+  };
+  
+  /* Visible range (eliminate border blocks) */
+  const int visible[2] = {blocks[0]*sbin, blocks[1]*sbin};
+
+  /* shared sub histgram among threads in the same GPU block */ 
+  /* 18 means orientation of histgram */
+  __shared__ FLOAT sub_hist[VOTE_CELL_PER_BLOCK_X][VOTE_CELL_PER_BLOCK_Y][18]; 
+
+  /* choose working threads in each GPU-thread-block */
+  if (threadIdx.x<VOTE_CELL_PER_BLOCK_X && threadIdx.y<VOTE_CELL_PER_BLOCK_Y)
+    {
+#pragma unroll 18
+      /* initialize sub histgram */
+      for (int i=0; i<18; i++)
+        sub_hist[threadIdx.x][threadIdx.y][i] = 0.f;
+    }
+  
+  __syncthreads();
+  
+  
+  /* calculate relative cell block index of pixel concerned */
+
+  // for (int x=1; x<visible[1]-1; x++) {
+  //   for (int y=1; y<visible[0]-1; y++) {
+  if (1<=x && x<visible[1]-1 && 1<=y && y<visible[0]-1 && 0<=level && level <= LEN &&
+      sbin/2<=threadIdx.x && sbin/2<=threadIdx.y &&
+      threadIdx.x<VOTE_CELL_PER_BLOCK_X*sbin-sbin/2 && threadIdx.y<VOTE_CELL_PER_BLOCK_Y*sbin-sbin/2)
+    {
+      /* first color channel */
+      base_index += min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
+      FLOAT dx, dy;
+      
+#ifdef USE_FLOAT_AS_DECIMAL
+      {
+        /* get "float" type values from texture memory */
+        dy = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+        dx = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+      }
+#else
+      int2 arg1;
+      int2 arg2;
+      {
+        /* get "double" type values from texture memory */
+        arg1 = tex1Dfetch(resized_image_double, base_index + 1);
+        arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
+        dy = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+        
+        arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+        arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+        dx = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+      }
+#endif
+      FLOAT  v  = dx*dx + dy*dy;
+      
+      /* second color channel */
+      base_index += dims[0]*dims[1];
+      FLOAT dx2, dy2;
+
+#ifdef USE_FLOAT_AS_DECIMAL
+      {
+        /* get "float" type values from texture memory */
+        dy2 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+        dx2 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+      }
+#else
+      {
+        /* get "double" type values from texture memory */
+        arg1 = tex1Dfetch(resized_image_double, base_index + 1);
+        arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
+        dy2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+        
+        arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+        arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+        dx2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+      }
+#endif
+      FLOAT v2  = dx2*dx2 + dy2*dy2;
+      
+      /* third color channel */
+      base_index += dims[0]*dims[1];
+      FLOAT dx3, dy3;
+#ifdef USE_FLOAT_AS_DECIMAL
+      {
+        /* get "float" type values from texture memory */
+        dy3 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+        dx3 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+      }
+#else
+      {
+        /* get "double" type values from texture memory */
+        arg1 = tex1Dfetch(resized_image_double, base_index + 1);
+        arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
+        dy3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+        
+        arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+        arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+        dx3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+      }    
+#endif
+      FLOAT v3  = dx3*dx3 + dy3*dy3;
+      
+      /* pick channel with strongest gradient */
+      if (v2 > v) {
+        v  = v2;
+        dx = dx2;
+        dy = dy2;
+      }
+      if (v3 > v) {
+        v  = v3;
+        dx = dx3;
+        dy = dy3;
+      }
+      
+      /* snap to one of 18 orientations */
+      FLOAT best_dot = 0;
+      int   best_o   = 0;
+#pragma unroll 9
+      for (int o=0; o<9; o++) {
+        FLOAT dot = Hcos[o]*dx + Hsin[o]*dy; 
+        
+        if (dot > best_dot) {
+          best_dot = dot;
+          best_o   = o;
+        }
+        else if (-dot > best_dot) {
+          best_dot = -dot;
+          best_o   = o + 9;
+        }
+      }
+      
+      /*add to 4 histgrams aroud pixel using linear interpolation*/
+      FLOAT xp  = ((FLOAT)x+0.5)/(FLOAT)sbin - 0.5;
+      FLOAT yp  = ((FLOAT)y+0.5)/(FLOAT)sbin - 0.5;
+      int   ixp = (int)floor((double)xp);
+      int   iyp = (int)floor((double)yp);
+      FLOAT vx0 = xp - ixp;
+      FLOAT vy0 = yp - iyp;
+      FLOAT vx1 = 1.0 - vx0;
+      FLOAT vy1 = 1.0 - vy0;
+      v = sqrt((double)v);
+
+
+      /* index of histgram cell block in a GPU-thread-block */
+      int sub_hist_idx_x = ixp % CELL_PER_BLOCK_X;
+      int sub_hist_idx_y = iyp % CELL_PER_BLOCK_Y;
+  
+
+      
+      /* vote gradient values to subhistgram */
+#ifdef USE_FLOAT_AS_DECIMAL
+
+      if (ixp >= 0 && iyp >= 0) {
+        atomicAdd_float(&sub_hist[sub_hist_idx_x][sub_hist_idx_y][best_o], vx1*vy1*v);
+      }
+
+      if (ixp+1 < blocks[1] && iyp >= 0) {
+        atomicAdd_float(&sub_hist[sub_hist_idx_x + 1][sub_hist_idx_y][best_o], vx0*vy1*v);
+      }
+
+      if (ixp >= 0 && iyp+1 < blocks[0]) {
+        atomicAdd_float(&sub_hist[sub_hist_idx_x][sub_hist_idx_y + 1][best_o], vx1*vy0*v);
+      }
+      
+      if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
+        atomicAdd_float(&sub_hist[sub_hist_idx_x + 1][sub_hist_idx_y + 1][best_o], vx0*vy0*v);
+      }
+
+#else
+
+      if (ixp >= 0 && iyp >= 0) {
+        atomicAdd_double(&sub_hist[sub_hist_idx_x][sub_hist_idx_y][best_o], vx1*vy1*v);
+      }
+
+      if (ixp+1 < blocks[1] && iyp >= 0) {
+        atomicAdd_double(&sub_hist[sub_hist_idx_x + 1][sub_hist_idx_y][best_o], vx0*vy1*v);
+      }
+
+      if (ixp >= 0 && iyp+1 < blocks[0]) {
+        atomicAdd_double(&sub_hist[sub_hist_idx_x][sub_hist_idx_y + 1][best_o], vx1*vy0*v);
+      }
+      
+      if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
+        atomicAdd_double(&sub_hist[sub_hist_idx_x + 1][sub_hist_idx_y + 1][best_o], vx0*vy0*v);
+      }
+
+#endif      
+      
+    }
+  
+  /* synchronize threads in the same GPU block */
+  __syncthreads();
+
+
+  /* vote to global histgram */
+  if (threadIdx.x<VOTE_CELL_PER_BLOCK_X && threadIdx.y<VOTE_CELL_PER_BLOCK_Y)
+    {
+
+      /* index of histgram cell block in all GPU-thread-blocks */
+      int main_hist_idx_x = blockIdx.x * CELL_PER_BLOCK_X + threadIdx.x;
+      int main_hist_idx_y = blockIdx.y * CELL_PER_BLOCK_Y + threadIdx.y;
+      
+      /* whether memory region to attempt to write is proper or not*/
+      if (main_hist_idx_x < blocks[1]-1 && main_hist_idx_y < blocks[0]-1)
+        {
+#pragma unroll 18
+          for (int i=0; i<18; i++)
+            {
+#ifdef USE_FLOAT_AS_DECIMAL
+
+              unsigned long long int address = (unsigned long long int)hist + 
+                (main_hist_idx_x*blocks[0] + main_hist_idx_y + i*blocks[0]*blocks[1])*sizeof(FLOAT);
+              atomicAdd_float((FLOAT*)address, sub_hist[threadIdx.x][threadIdx.y][i]);
+
+#else
+
+              unsigned long long int address = (unsigned long long int)hist + 
+                (main_hist_idx_x*blocks[0] + main_hist_idx_y + i*blocks[0]*blocks[1])*sizeof(FLOAT);
+              atomicAdd_double((FLOAT*)address, sub_hist[threadIdx.x][threadIdx.y][i]);
+
+#endif
+            }
+        }
+    }
+  
       //   }
       // }
-      
-      
       
   /*************************************************************/
   /* original source of calc_feature loop */
@@ -1464,4 +1569,6 @@ calc_feature
 
 
 }
-#endif
+
+#endif  // #if 0
+
