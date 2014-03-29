@@ -19,11 +19,6 @@
 #include "for_use_GPU.h"
 #include "switch_float.h"
 
-CUdeviceptr *pm_size_array_dev;
-CUdeviceptr *PIDX_array_dev;
-CUdeviceptr *def_array_dev;
-CUdeviceptr *DID_4_array_dev;
-CUdeviceptr *numpart_dev;
 int max_numpart = 0;
 int max_RL_S = 0;
 
@@ -639,12 +634,6 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
 
   FLOAT **featp2 = (FLOAT **)malloc(L_MAX*sizeof(FLOAT *));
 
-  pm_size_array_dev = (CUdeviceptr*)malloc(device_num*sizeof(CUdeviceptr));
-  PIDX_array_dev = (CUdeviceptr*)malloc(device_num*sizeof(CUdeviceptr));
-  def_array_dev = (CUdeviceptr*)malloc(device_num*sizeof(CUdeviceptr));
-  DID_4_array_dev = (CUdeviceptr*)malloc(device_num*sizeof(CUdeviceptr));
-  numpart_dev  = (CUdeviceptr*)malloc(device_num*sizeof(CUdeviceptr));
-
 
   if(featp2 == NULL) {  // error semantics
     printf("allocate featp2 failed\n");
@@ -791,6 +780,8 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
 
   ///////root calculation/////////
   /* calculate model score (only root) */
+
+
   gettimeofday(&tv_root_score_start, NULL);
   rootmatch = fconvsMT_GPU(
                            featp2,
@@ -845,8 +836,8 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
       time_part_score += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
       
     }
-     
 
+     
   res = cuCtxSetCurrent(ctx[0]);
   if(res != CUDA_SUCCESS) {
     printf("cuCtxSetCurrent(ctx[0]) failed: res = %s\n", conv(res));
@@ -1285,7 +1276,6 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
           }
 
 
-
        
           gettimeofday(&tv_dt_start, NULL);
           FLOAT ****M_array = dt_GPU(                     
@@ -1311,9 +1301,8 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
           gettimeofday(&tv_dt_end, NULL);
           tvsub(&tv_dt_end, &tv_dt_start, &tv);
           time_dt += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-          
-          
-          
+         
+
           /* add part score */
           for(int level=interval; level<L_MAX; level++){
             int L = level - interval;          
@@ -1371,33 +1360,7 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
           free(PIDX_array);
 
           
-          /* free GPU memory */
-
-          for(int i = 0; i < device_num; i++){
-
-          res = cuCtxSetCurrent(ctx[i]);
-          if(res != CUDA_SUCCESS) {
-            printf("cuCtxSetCurrent(ctx[%d]) failed: res = %s\n", i, conv(res));
-            exit(1);
-           }
-
-          res = cuMemFree(DID_4_array_dev[i]);
-          if(res != CUDA_SUCCESS) {
-            printf("cuMemFree(DID_4_array_dev) failed: res = %s\n", conv(res));
-            exit(1);
-          }
-          
-          res = cuMemFree(PIDX_array_dev[i]);
-          if(res != CUDA_SUCCESS) {
-            printf("cuMemFree(PIDX_array_dev) failed: res = %s\n", conv(res));
-            exit(1);
-          }
-
-          }
-
-          free(DID_4_array_dev);
-          free(PIDX_array_dev);  
-        
+ 
           res = cuCtxSetCurrent(ctx[0]);
           if(res != CUDA_SUCCESS) {
             printf("cuCtxSetCurrent(ctx[0]) failed: res = %s\n", conv(res));
@@ -1619,62 +1582,16 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
   // printf("============================================\n");
   // printf("\n");
   
+#ifdef PRINT_INFO
   printf("root SCORE : %f\n", time_root_score);
   printf("part SCORE : %f\n", time_part_score);
   printf("dt  : %f\n", time_dt);
   printf("calc_a_score : %f\n", time_calc_a_score);
+#endif
   
 
 #endif
   
-  /* free GPU memory */
-
-
-  for(int i = 0; i < device_num; i++){
-
-    res = cuCtxSetCurrent(ctx[i]);
-    if(res != CUDA_SUCCESS) {
-      printf("cuCtxSetCurrent(ctx[%d]) failed: res = %s\n", i, conv(res));
-      exit(1);
-    }
-
-    res = cuMemFree(part_C_dev[i]);
-    if(res != CUDA_SUCCESS){
-      printf("cuMemFree(part_C_dev) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-
-    res = cuMemFree(part_error_array_dev[i]);
-    if(res != CUDA_SUCCESS) {
-      printf("cuMemFree(part_error_array_dev) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-
-    res = cuMemFree(pm_size_array_dev[i]);
-    if(res != CUDA_SUCCESS){
-      printf("cuMemFree(pm_size_array_dev) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-
-    res = cuMemFree(def_array_dev[i]);
-    if(res != CUDA_SUCCESS) {
-      printf("cuMemFree(def_array_dev) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-
-    res = cuMemFree(numpart_dev[i]);
-    if(res != CUDA_SUCCESS) {
-      printf("cuMemFree(numpart_dev) failed: res = %s\n", conv(res));
-      exit(1);
-    }
-
-  }
-
-  free(part_error_array_dev);
-  free(pm_size_array_dev);
-  free(part_C_dev);
-  free(def_array_dev);
-  free(numpart_dev);
 
 
 
@@ -1720,7 +1637,6 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
   s_free(rm_size_array);
   s_free(pm_size_array[0]);
   s_free(pm_size_array);
-  
 
 
   /* Output boundary-box coorinate information */
