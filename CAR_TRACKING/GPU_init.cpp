@@ -89,6 +89,7 @@ void init_cuda(void)
     printf("%d GPUs found\n", device_num);
 #endif
     //    device_num = 4;
+    device_num = 2;
   /* get device */
     dev = (CUdevice*)malloc(device_num*sizeof(CUdevice));
     for(int i=0; i<device_num; i++) {
