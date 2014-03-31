@@ -41,8 +41,10 @@ process_root
 {
   int idx_x = blockIdx.x * blockDim.x + threadIdx.x;
   int idx_y = blockIdx.y * blockDim.y + threadIdx.y;
-  int ii = blockIdx.z % len;
-  int level = blockIdx.z / len;
+  int idx_z = blockIdx.z * blockDim.z + threadIdx.z;
+  int ii = idx_z % len;
+  int level = idx_z / len;
+
 
   int A_dims[3] = { A_dims_array[level*3], A_dims_array[level*3+1], A_dims_array[level*3+2] };
   int B_dims[3] = { B_dims_array[ii*3], B_dims_array[ii*3+1], B_dims_array[ii*3+2] };
