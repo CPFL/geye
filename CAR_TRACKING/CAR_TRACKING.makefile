@@ -5,7 +5,6 @@ CUDA_ARCH=sm_21
 CUDA_REG_CONF_OPTION = #-Xptxas -v  --maxrregcount 32
 CUDA_COMPILER = nvcc -arch=$(CUDA_ARCH) -cubin $(CUDA_REG_CONF_OPTION)
 
-
 # Include paths...
 CUDA_INC=/usr/local/cuda/include
 OPENCV_INC=/usr/local/include/opencv
