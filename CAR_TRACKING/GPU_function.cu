@@ -955,7 +955,7 @@ min_i(int x, int y)
 __device__ 
 double 
 atomicAdd_double
-(double *address, double val )
+(double *address, double val)
 {
   unsigned long long int *address_as_ull = (unsigned long long int *)address;
   unsigned long long int old = *address_as_ull, assumed;
@@ -993,10 +993,10 @@ hiloint2uint64(int hi, int lo)
 #ifdef USE_FLOAT_AS_DECIMAL
 texture<float, cudaTextureType1D, cudaReadModeElementType> resized_image;
 #else
-texture<int2, cudaTextureType1D, cudaReadModeElementType>  resized_image_double;
+texture<uint2, cudaTextureType1D, cudaReadModeElementType>  resized_image_double;
 #endif
-texture<int , cudaTextureType1D, cudaReadModeElementType>  resized_image_size;
 
+texture<int , cudaTextureType1D, cudaReadModeElementType>  resized_image_size;
 texture<int, cudaTextureType1D, cudaReadModeElementType>   image_idx_incrementer;
 texture<uint2, cudaTextureType1D, cudaReadModeElementType> hist_ptr_incrementer;
 
@@ -1013,8 +1013,8 @@ int level
  )
 {
   /* index of each pixels */
-  int x     = blockIdx.x * blockDim.x + threadIdx.x;
-  int y     = blockIdx.y * blockDim.y + threadIdx.y;
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int y = blockIdx.y * blockDim.y + threadIdx.y;
  
   const FLOAT Hcos[9] = {1.0000, 0.9397, 0.7660, 0.5000, 0.1736, -0.1736, -0.5000, -0.7660, -0.9397};
   const FLOAT Hsin[9] = {0.0000, 0.3420, 0.6428, 0.8660, 0.9848, 0.9848, 0.8660, 0.6428, 0.3420};
@@ -1024,6 +1024,7 @@ int level
   uint2                   ptr_incrementer = tex1Dfetch(hist_ptr_incrementer, level);
   unsigned long long int  ptr_hist        = (unsigned long long int)hist_top + hiloint2uint64(ptr_incrementer.x, ptr_incrementer.y);
   FLOAT                  *hist            = (FLOAT *)ptr_hist;
+
 
   /* input size */
   const int height  = tex1Dfetch(resized_image_size, level*3);
@@ -1037,11 +1038,11 @@ int level
   };
   
   /* Visible range (eliminate border blocks) */
-  const int visible[2] = {blocks[0]*sbin, blocks[1]*sbin};
+  //  const int visible[2] = {blocks[0]*sbin, blocks[1]*sbin};
     
   // for (int x=1; x<visible[1]-1; x++) {
   //   for (int y=1; y<visible[0]-1; y++) {
-  if(1<=x && x<vis_R1 && 1<=y && y<vis_R0)
+  if(1<=x && x<vis_R1-1 && 1<=y && y<vis_R0-1)
     {
       /* first color channel */
       base_index += min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
