@@ -1000,45 +1000,35 @@ texture<int , cudaTextureType1D, cudaReadModeElementType>  resized_image_size;
 texture<int, cudaTextureType1D, cudaReadModeElementType>   image_idx_incrementer;
 texture<uint2, cudaTextureType1D, cudaReadModeElementType> hist_ptr_incrementer;
 
-//#define USE_TEX
-
 extern "C"
 __global__
 void
-#ifdef USE_TEX
 calc_feature
 (
- FLOAT *hist,
- int sbin
+ FLOAT *hist_top,
+ int sbin,
+ int visible_0,
+ int visible_1,
+ int level
  )
-#else
- calc_feature
-(
- FLOAT *SRC,
- int   *size,
- FLOAT *hist,
- int sbin
- )
-#endif
 {
+  /* index of each pixels */
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
   
   const FLOAT Hcos[9] = {1.0000, 0.9397, 0.7660, 0.5000, 0.1736, -0.1736, -0.5000, -0.7660, -0.9397};
   const FLOAT Hsin[9] = {0.0000, 0.3420, 0.6428, 0.8660, 0.9848, 0.9848, 0.8660, 0.6428, 0.3420};
+
+  /* adjust pointer position */
+  int base_index = tex1Dfetch(image_idx_incrementer, level);
+  uint2 ptr_hist_uint2 = tex1Dfetch(hist_ptr_incrementer, level);
+  unsigned long long int ptr_hist = (unsigned long long int)hist_top + hiloint2uint64(ptr_hist_uint2.x, ptr_hist_uint2.y); // convert uint2 -> unsigned long long int
+  FLOAT *hist = (FLOAT *)ptr_hist;
+
   
   /* input size */
-#ifdef USE_TEX
-
-  const int height = tex1Dfetch(resized_image_size, 0);
-  const int width  = tex1Dfetch(resized_image_size, 1);
-
-#else
- 
-  const int height = size[0];
-  const int width  = size[1];
-
-#endif
+  const int height = tex1Dfetch(resized_image_size, level*3);
+  const int width  = tex1Dfetch(resized_image_size, level*3 + 1);
 
   const int dims[2] = {height, width};
 
@@ -1048,19 +1038,14 @@ calc_feature
     (int)floor((double)width/(double)sbin+0.5)
   };
   
-  /* Visible range (eliminate border blocks) */
-  const int visible[2] = {blocks[0]*sbin, blocks[1]*sbin};
-  
 
   // for (int x=1; x<visible[1]-1; x++) {
   //   for (int y=1; y<visible[0]-1; y++) {
-  if (1<=x && x<visible[1]-1 && 1<=y && y<visible[0]-1) 
+  if (1<=x && x<visible_1-1 && 1<=y && y<visible_0-1) 
     {
 
       /* first color channel */
-#ifdef USE_TEX
-
-      int base_index = min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
+      base_index += min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
       FLOAT dx, dy;
 
 #ifdef USE_FLOAT_AS_DECIMAL
@@ -1079,20 +1064,9 @@ calc_feature
           dx = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
         }
 #endif
-
-#else
-
-      int base_index = min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
-      FLOAT dy = SRC[base_index + 1] - SRC[base_index - 1];
-      FLOAT dx = SRC[base_index + dims[0]] - SRC[base_index - dims[0]];
-
-#endif
-
       FLOAT  v  = dx*dx + dy*dy;
       
       /* second color channel */
-#ifdef USE_TEX
-
       base_index += dims[0]*dims[1];
       FLOAT dx2, dy2;
 
@@ -1112,19 +1086,9 @@ calc_feature
           dx2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
         }
 #endif
-#else
-
-      base_index += dims[0]*dims[1];
-      FLOAT dy2 = SRC[base_index + 1] - SRC[base_index -1];
-      FLOAT dx2 = SRC[base_index + dims[0]] - SRC[base_index - dims[0]];
-
-#endif
-
       FLOAT v2  = dx2*dx2 + dy2*dy2;
       
       /* third color channel */
-#ifdef USE_TEX
-
       base_index += dims[0]*dims[1];
       FLOAT dx3, dy3;
  
@@ -1144,15 +1108,6 @@ calc_feature
           dx3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
         }
 #endif
-
-#else
-
-      base_index += dims[0]*dims[1];
-      FLOAT dy3 = SRC[base_index + 1] - SRC[base_index -1];
-      FLOAT dx3 = SRC[base_index + dims[0]] - SRC[base_index - dims[0]];
-
-#endif
-
       FLOAT v3  = dx3*dx3 + dy3*dy3;
 
       /* pick channel with strongest gradient */
