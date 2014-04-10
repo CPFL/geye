@@ -999,11 +999,12 @@ texture<uint2, cudaTextureType1D, cudaReadModeElementType>  resized_image_double
 texture<int , cudaTextureType1D, cudaReadModeElementType>  resized_image_size;
 texture<int, cudaTextureType1D, cudaReadModeElementType>   image_idx_incrementer;
 texture<uint2, cudaTextureType1D, cudaReadModeElementType> hist_ptr_incrementer;
+texture<uint2, cudaTextureType1D, cudaReadModeElementType> norm_ptr_incrementer;
 
 extern "C"
 __global__
 void
-calc_feature
+calc_hist
 (
  FLOAT *hist_top,
  int sbin,
@@ -1125,6 +1126,8 @@ calc_feature
       /* snap to one of 18 orientations */
       FLOAT best_dot = 0;
       int   best_o   = 0;
+
+#pragma unroll 9
       for (int o=0; o<9; o++) {
         FLOAT dot = Hcos[o]*dx + Hsin[o]*dy; 
         
@@ -1136,7 +1139,6 @@ calc_feature
           best_dot = -dot;
           best_o   = o + 9;
         }
-        
       }
       
       /*add to 4 histgrams aroud pixel using linear interpolation*/
@@ -1197,7 +1199,7 @@ calc_feature
       
       
   /*************************************************************/
-  /* original source of calc_feature loop */
+  /* original source of calc hist loop */
   // for (int x=1; x<visible[1]-1; x++) {
   //   for (int y=1; y<visible[0]-1; y++) {
 
@@ -1280,4 +1282,65 @@ calc_feature
   /*************************************************************/
 
 
+}
+
+
+extern "C"
+__global__
+void
+calc_norm
+(
+ FLOAT *hist_top,
+ FLOAT *norm_top,
+ int blocks_0,
+ int blocks_1,
+ int level
+ )
+{
+  /* index of each element of norm */
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int y = blockIdx.y * blockDim.y + threadIdx.y;
+    
+  if (x<blocks_1 && y<blocks_0)
+    {
+      /* adjust pointer position */
+      uint2 ptr_uint2 = tex1Dfetch(hist_ptr_incrementer, level);
+      unsigned long long int ptr_hist = (unsigned long long int)hist_top + hiloint2uint64(ptr_uint2.x, ptr_uint2.y); // convert uint2 -> unsigned long long int
+      
+      
+      ptr_uint2 = tex1Dfetch(norm_ptr_incrementer, level);
+      unsigned long long int ptr_norm = (unsigned long long int)norm_top + hiloint2uint64(ptr_uint2.x, ptr_uint2.y); // convert uint2 -> unsigned long long int
+      FLOAT *dst = (FLOAT *)(ptr_norm + (x*blocks_0 + y)*sizeof(FLOAT));
+      
+      FLOAT add_val = 0;
+#pragma unroll 9
+      for (int orient=0; orient<9; orient++)
+        {
+          FLOAT *src1 = (FLOAT *)(ptr_hist + (orient*blocks_0*blocks_1 + x*blocks_0 + y)*sizeof(FLOAT));
+          FLOAT *src2 = (FLOAT *)(ptr_hist + ((orient+9)*blocks_0*blocks_1 + x*blocks_0 + y)*sizeof(FLOAT));
+          add_val += (*src1 + *src2) * (*src1 + *src2);
+        }
+      *(dst) += add_val;
+    }
+  /*************************************************************/
+  /* original source of compute_energy loop */
+  
+  //   /* compute energy in each block by summing over orientations */
+  //   for (int o=0; o<9; o++) {
+  //     FLOAT *src1 = hist + o*blocks[0]*blocks[1];
+  //     FLOAT *src2 = hist + (o+9)*blocks[0]*blocks[1];
+  //     FLOAT *dst  = norm;
+  //     FLOAT *end  = norm + blocks[0]*blocks[1];
+  
+  //     while(dst < end) {
+  //       *(dst++) += (*src1 + *src2) * (*src1 + *src2);
+  //       src1++;
+  //       src2++;
+  //     }
+  //   }
+  
+  
+  /*************************************************************/
+  /*************************************************************/
+  
 }

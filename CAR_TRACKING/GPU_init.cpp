@@ -24,7 +24,7 @@ CUdevice *dev;
 CUcontext *ctx;
 //CUdevice dev, dev2;
 //CUcontext ctx, ctx2;
-CUfunction *func_process_root, *func_process_part, *func_dt1d_x, *func_dt1d_y, *func_calc_a_score, *func_inverse_Q, *func_calc_feature;
+CUfunction *func_process_root, *func_process_part, *func_dt1d_x, *func_dt1d_y, *func_calc_a_score, *func_inverse_Q, *func_calc_hist, *func_calc_norm;
 CUmodule *module;
 int *NR_MAXTHREADS_X, *NR_MAXTHREADS_Y;
 // ÉzÉXÉgÉÅÉÇÉä
@@ -109,7 +109,8 @@ void init_cuda(void)
   func_dt1d_y = (CUfunction*)malloc(device_num*sizeof(CUfunction));
   func_calc_a_score = (CUfunction*)malloc(device_num*sizeof(CUfunction));
   func_inverse_Q = (CUfunction*)malloc(device_num*sizeof(CUfunction));
-  func_calc_feature = (CUfunction*)malloc(device_num*sizeof(CUfunction));
+  func_calc_hist = (CUfunction*)malloc(device_num*sizeof(CUfunction));
+  func_calc_norm = (CUfunction*)malloc(device_num*sizeof(CUfunction));
 
 
 
@@ -192,9 +193,15 @@ void init_cuda(void)
       exit(1);
     }
 
-    res = cuModuleGetFunction(&func_calc_feature[i], module[i], "calc_feature");
+    res = cuModuleGetFunction(&func_calc_hist[i], module[i], "calc_hist");
     if(res != CUDA_SUCCESS){
-      printf("\ncuGetFunction(calc_feature) failed: res = %s\n", conv(res));
+      printf("\ncuGetFunction(calc_hist) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+
+    res = cuModuleGetFunction(&func_calc_norm[i], module[i], "calc_norm");
+    if(res != CUDA_SUCCESS){
+      printf("\ncuGetFunction(calc_norm) failed: res = %s\n", conv(res));
       exit(1);
     }
 
@@ -323,7 +330,8 @@ void clean_cuda(void)
     free(func_dt1d_y);
     free(func_calc_a_score);
     free(func_inverse_Q);
-    free(func_calc_feature);
+    free(func_calc_hist);
+    free(func_calc_norm);
     free(module);
     free(dev);
     free(ctx);
