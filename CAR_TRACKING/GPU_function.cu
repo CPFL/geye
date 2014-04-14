@@ -1000,6 +1000,7 @@ texture<int , cudaTextureType1D, cudaReadModeElementType>  resized_image_size;
 texture<int, cudaTextureType1D, cudaReadModeElementType>   image_idx_incrementer;
 texture<uint2, cudaTextureType1D, cudaReadModeElementType> hist_ptr_incrementer;
 texture<uint2, cudaTextureType1D, cudaReadModeElementType> norm_ptr_incrementer;
+texture<uint2, cudaTextureType1D, cudaReadModeElementType> feat_ptr_incrementer;
 
 extern "C"
 __global__
@@ -1312,6 +1313,7 @@ calc_norm
       unsigned long long int ptr_norm = (unsigned long long int)norm_top + hiloint2uint64(ptr_uint2.x, ptr_uint2.y); // convert uint2 -> unsigned long long int
       FLOAT *dst = (FLOAT *)(ptr_norm + (x*blocks_0 + y)*sizeof(FLOAT));
       
+      
       FLOAT add_val = 0;
 #pragma unroll 9
       for (int orient=0; orient<9; orient++)
@@ -1340,6 +1342,225 @@ calc_norm
   //   }
   
   
+  /*************************************************************/
+  /*************************************************************/
+  
+}
+
+/* definition of constant */
+#define EPS 0.0001
+
+//return minimum number (FLOAT)
+__device__
+static inline FLOAT
+min_2(FLOAT x)
+{return (x <= 0.2 ? x :0.2);}
+
+
+extern "C"
+__global__
+void
+calc_feat
+(
+ FLOAT *hist_top,
+ FLOAT *norm_top,
+ FLOAT *feat_top,
+ int out_0,
+ int out_1,
+ int blocks_0,
+ int blocks_1,
+ int level
+ )
+{
+  /* index of each element of feat */
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+  /* adjust pointer position */
+  uint2 ptr_uint2 = tex1Dfetch(hist_ptr_incrementer, level);
+  unsigned long long int ptr_hist = (unsigned long long int)hist_top + hiloint2uint64(ptr_uint2.x, ptr_uint2.y); // convert uint2 -> unsigned long long int
+  FLOAT *hist = (FLOAT *)ptr_hist;
+  
+  ptr_uint2 = tex1Dfetch(norm_ptr_incrementer, level);
+  unsigned long long int ptr_norm = (unsigned long long int)norm_top + hiloint2uint64(ptr_uint2.x, ptr_uint2.y); // convert uint2 -> unsigned long long int
+  FLOAT *norm = (FLOAT *)ptr_norm;
+
+  ptr_uint2 = tex1Dfetch(feat_ptr_incrementer, level);
+  unsigned long long int ptr_feat = (unsigned long long int)feat_top + hiloint2uint64(ptr_uint2.x, ptr_uint2.y); // convert uint2 -> unsigned long long int
+  FLOAT *feat = (FLOAT *)ptr_feat;
+  
+  if (x<out_1 && y<out_0)
+    {   
+      // for (int x=0; x<out[1]; x++) {
+      //   for (int y=0; y<out[0]; y++) {
+      //      FLOAT *dst = feat + x*out[0] + y;
+      FLOAT *dst = feat + x*out_0 + y;
+      FLOAT *src, *p, n1, n2, n3, n4;
+      
+      //      p = norm + (x+1)*blocks[0] + y+1;
+      p = norm + (x+1)*blocks_0 + y+1;
+      //      n1 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + EPS);
+      n1 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks_0) + *(p+blocks_0+1) + EPS);
+      
+      //      p = norm + (x+1)*blocks[0] + y;
+      p = norm + (x+1)*blocks_0 + y;
+      //      n2 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + EPS);
+      n2 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks_0) + *(p+blocks_0+1) + EPS);
+      
+      //      p = norm + x*blocks[0] + y+1;
+      p = norm + x*blocks_0 + y+1;
+      //      n3 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + EPS);
+      n3 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks_0) + *(p+blocks_0+1) + EPS);
+      
+      //      p = norm + x*blocks[0] + y;
+      p = norm + x*blocks_0 + y;
+      //      n4 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + EPS);
+      n4 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks_0) + *(p+blocks_0+1) + EPS);
+
+      FLOAT t1 = 0;
+      FLOAT t2 = 0;
+      FLOAT t3 = 0;
+      FLOAT t4 = 0;
+      
+      /* contrast-sensitive features */
+      //      src = hist + (x+1)*blocks[0] + (y+1);
+      src = hist + (x+1)*blocks_0 + (y+1);
+
+#pragma unroll 18
+      for (int o=0; o<18; o++) {
+        FLOAT h1 = min_2(*src * n1);
+        FLOAT h2 = min_2(*src * n2);
+        FLOAT h3 = min_2(*src * n3);
+        FLOAT h4 = min_2(*src * n4);
+        
+        *dst = 0.5 * (h1 + h2 + h3 + h4);
+        
+        t1 += h1;
+        t2 += h2;
+        t3 += h3;
+        t4 += h4;
+        
+        //        dst += out[0]*out[1];
+        dst += out_0*out_1;
+        //        src += blocks[0]*blocks[1];
+        src += blocks_0*blocks_1;
+      }
+      
+      /* contrast-insensitive features */
+      //      src = hist + (x+1)*blocks[0] + (y+1);
+      src = hist + (x+1)*blocks_0 + (y+1);
+
+#pragma unroll 9
+      for (int o=0; o<9; o++) {
+        //        FLOAT sum = *src + *(src + 9*blocks[0]*blocks[1]);
+        FLOAT sum = *src + *(src + 9*blocks_0*blocks_1);
+        FLOAT h1 = min_2(sum * n1);
+        FLOAT h2 = min_2(sum * n2);
+        FLOAT h3 = min_2(sum * n3);
+        FLOAT h4 = min_2(sum * n4);
+        
+        *dst = 0.5 * (h1 + h2 + h3 + h4);
+        
+        //        dst += out[0]*out[1];
+        dst += out_0*out_1;
+        //        src += blocks[0]*blocks[1];
+        src += blocks_0*blocks_1;
+      }
+      
+      /* texture features */
+      *dst = 0.2357 * t1;
+      //      dst += out[0]*out[1];
+      dst += out_0*out_1;
+      
+      *dst = 0.2357 * t2;
+      //      dst += out[0]*out[1];
+      dst += out_0*out_1;
+      
+      *dst = 0.2357 * t3;
+      //      dst += out[0]*out[1];
+      dst += out_0*out_1;
+      
+      *dst = 0.2357 * t4;
+    }
+
+  //    }
+  //}
+  
+  
+  /*************************************************************/
+  /* original source of compute features loop */
+  
+  // /* compute featuers */
+  // for (int x=0; x<out[1]; x++) {
+  //   for (int y=0; y<out[0]; y++) {
+  //     FLOAT *dst = feat + x*out[0] + y;
+  //     FLOAT *src, *p, n1, n2, n3, n4;
+  
+  //     p = norm + (x+1)*blocks[0] + y+1;
+  //     n1 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
+  
+  //     p = norm + (x+1)*blocks[0] + y;
+  //     n2 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
+  
+  //     p = norm + x*blocks[0] + y+1;
+  //     n3 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
+  
+  //     p = norm + x*blocks[0] + y;
+  //     n4 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
+  
+  //     FLOAT t1 = 0;
+  //     FLOAT t2 = 0;
+  //     FLOAT t3 = 0;
+  //     FLOAT t4 = 0;
+  
+  //     /* contrast-sensitive features */
+  //     src = hist + (x+1)*blocks[0] + (y+1);
+  //     for (int o=0; o<18; o++) {
+  //       FLOAT h1 = min_2(*src * n1);
+  //       FLOAT h2 = min_2(*src * n2);
+  //       FLOAT h3 = min_2(*src * n3);
+  //       FLOAT h4 = min_2(*src * n4);
+  
+  //       *dst = 0.5 * (h1 + h2 + h3 + h4);
+  
+  //       t1 += h1;
+  //       t2 += h2;
+  //       t3 += h3;
+  //       t4 += h4;
+  
+  //       dst += out[0]*out[1];
+  //       src += blocks[0]*blocks[1];
+  //     }
+  
+  //     /* contrast-insensitive features */
+  //     src = hist + (x+1)*blocks[0] + (y+1);
+  //     for (int o=0; o<9; o++) {
+  //       FLOAT sum = *src + *(src + 9*blocks[0]*blocks[1]);
+  //       FLOAT h1 = min_2(sum * n1);
+  //       FLOAT h2 = min_2(sum * n2);
+  //       FLOAT h3 = min_2(sum * n3);
+  //       FLOAT h4 = min_2(sum * n4);
+  
+  //       *dst = 0.5 * (h1 + h2 + h3 + h4);
+  
+  //       dst += out[0]*out[1];
+  //       src += blocks[0]*blocks[1];
+  //     }
+  
+  //     /* texture features */
+  //     *dst = 0.2357 * t1;
+  //     dst += out[0]*out[1];
+  
+  //     *dst = 0.2357 * t2;
+  //     dst += out[0]*out[1];
+  
+  //     *dst = 0.2357 * t3;
+  //     dst += out[0]*out[1];
+  
+  //     *dst = 0.2357 * t4;
+  //   }
+  // }
+    
   /*************************************************************/
   /*************************************************************/
   

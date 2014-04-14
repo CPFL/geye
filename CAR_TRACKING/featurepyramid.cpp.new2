@@ -48,6 +48,7 @@ extern CUdevice *dev;
 extern CUcontext *ctx;
 extern CUfunction *func_calc_hist;
 extern CUfunction *func_calc_norm;
+extern CUfunction *func_calc_feat;
 extern CUmodule *module;
 
 
@@ -91,9 +92,7 @@ struct thread_data_forGPU {
   FLOAT *Out;
   CUdeviceptr hist_dev;
   CUdeviceptr norm_dev;
-  FLOAT *feat;
-  unsigned long long int *hist_ptr_incrementer; // temporary needed
-  unsigned long long int *norm_ptr_incrementer; // temporary needed
+  CUdeviceptr feat_dev;
 };
 
 //inline functions
@@ -110,9 +109,9 @@ int   *ini_featsize(Model_info *MI);                        //initialize feature
 FLOAT *Ipl_to_FLOAT(IplImage *Input);                                             //get intensity data (FLOAT) of input
 void   free_features(FLOAT **features,Model_info *MI);                            //release features
 //FLOAT *calc_feature(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin);                  //calculate HOG features
-FLOAT *calc_feature_byGPU(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin, int level, CUdeviceptr hist_dev, CUdeviceptr norm_dev, FLOAT *feat, unsigned long long int *hist_ptr_incrementer, unsigned long long int *norm_ptr_incrementer);                  //calculate HOG features
+void calc_feature_byGPU(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin, int level, CUdeviceptr hist_dev, CUdeviceptr norm_dev, CUdeviceptr feat_dev);                  //calculate HOG features
 //void   ini_thread_data(thread_data *TD,FLOAT *IM,int *INSIZE,int sbin,int level); //for thread-initialization
-void   ini_thread_data_fouGPU(thread_data_forGPU *TD,FLOAT *IM,int *INSIZE,int sbin,int level, CUdeviceptr hist_dev, CUdeviceptr norm_dev, FLOAT *feat, unsigned long long int *hist_ptr_incrementer, unsigned long long int *norm_ptr_incrementer); //for thread-initialization
+void   ini_thread_data_fouGPU(thread_data_forGPU *TD,FLOAT *IM,int *INSIZE,int sbin,int level, CUdeviceptr hist_dev, CUdeviceptr norm_dev, CUdeviceptr feat_dev); //for thread-initialization
 //unsigned __stdcall feat_calc(void *thread_arg);												//for thread_process													
 //void* feat_calc(void *thread_arg); //for thread_process
 void* feat_calc_forGPU(void *thread_arg); //for thread_process
@@ -475,8 +474,9 @@ FLOAT *calc_feature
   exit(1);                                      \
   }
 
+#define USE_STREAM
 
-FLOAT *calc_feature_byGPU
+void calc_feature_byGPU
 (
  FLOAT *SRC,                    // resized image
  int *ISIZE,                    // resized image size (3 dimension)
@@ -485,9 +485,7 @@ FLOAT *calc_feature_byGPU
  int level,
  CUdeviceptr hist_dev,
  CUdeviceptr norm_dev,
- FLOAT *feat,
- unsigned long long int *hist_ptr_incrementer,
- unsigned long long int *norm_ptr_incrementer
+ CUdeviceptr feat_dev
  )
 {
   /* rename argument */
@@ -507,24 +505,19 @@ FLOAT *calc_feature_byGPU
   
   /* Visible range (eliminate border blocks) */
   const int visible[2] = {blocks[0]*sbin, blocks[1]*sbin};
-  
-  /* HOG Histgram and Norm */
-  // FLOAT *hist = (FLOAT *)calloc(blocks[0]*blocks[1]*18, sizeof(FLOAT)); // HOG histgram
-  FLOAT *hist_tmp = (FLOAT *)calloc(blocks[0]*blocks[1]*18, sizeof(FLOAT)); // HOG histgram
-  //  FLOAT *norm = (FLOAT *)calloc(blocks[0]*blocks[1], sizeof(FLOAT));    // Norm
-  FLOAT *norm_tmp = (FLOAT *)calloc(blocks[0]*blocks[1], sizeof(FLOAT));    // Norm
-  
-  /* feature(Output) */
-  //  FLOAT *feat = (FLOAT *)calloc(out[0]*out[1]*out[2], sizeof(FLOAT));
-  
 
-  
+  /* attach CUDA Context on this p-thread */
   CUresult res;
   res = cuCtxSetCurrent(ctx[0]);
   MY_CUDA_CHECK(res, "cuCtxSetCurrent(ctx[0])");
   
-
-
+#ifdef USE_STREAM
+  /* create CUDA Stream for this p-thread */
+  CUstream stream;
+  res = cuStreamCreate(&stream, CU_STREAM_DEFAULT);
+  MY_CUDA_CHECK(res, "cuStreamCreate(stream)");
+#endif
+  
   void *kernel_args_hist[] = {
     &hist_dev,
     (void *)&sbin,
@@ -532,7 +525,7 @@ FLOAT *calc_feature_byGPU
     (void *)&visible[1],
     (void *)&level
   };
-
+  
   
   /* decide CUDA block shape */
   int max_thread_num = 0;
@@ -552,6 +545,21 @@ FLOAT *calc_feature_byGPU
   int sharedMemBytes = 0;
   
   /* execute GPU function */ 
+#ifdef USE_STREAM
+  res = cuLaunchKernel(
+                       func_calc_hist[0], // call function
+                       block_num_x,       // gridDimX
+                       block_num_y,       // gridDimY
+                       1,                 // gridDimZ
+                       thread_num_x,      // blockDimX
+                       thread_num_y,      // blockDimY
+                       1,                 // blockDimZ
+                       sharedMemBytes,    // sharedMemBytes
+                       stream,            // hStream
+                       kernel_args_hist,  // kernel Parameter
+                       NULL               // extra
+                       );
+#else
   res = cuLaunchKernel(
                        func_calc_hist[0], // call function
                        block_num_x,       // gridDimX
@@ -565,14 +573,22 @@ FLOAT *calc_feature_byGPU
                        kernel_args_hist,  // kernel Parameter
                        NULL               // extra
                        );
+  
+#endif
   MY_CUDA_CHECK(res, "cuLaunchKernel(calc_hist)");
   
+#ifdef USE_STREAM
+  /* synchronize CUDA Stream */
+  res = cuStreamSynchronize(stream);
+  MY_CUDA_CHECK(res, "cuStreamSynchronize(stream)");
+#else
   /* synchronize GPU threads */
   res = cuCtxSynchronize();
   MY_CUDA_CHECK(res, "cuCtxSynchronize(calc_hist)");
-
-
-
+#endif
+  
+  
+  /* compute energy in each block by summing over orientations */
   void *kernel_args_norm[] = {
     &hist_dev,
     &norm_dev,
@@ -580,7 +596,6 @@ FLOAT *calc_feature_byGPU
     (void *)&blocks[1],
     (void *)&level
   };
-
   
   /* decide CUDA block shape */
   thread_num_x = (blocks[1] < sqrt(max_thread_num)) ? 
@@ -596,6 +611,21 @@ FLOAT *calc_feature_byGPU
   sharedMemBytes = 0;
   
   /* execute GPU function */ 
+#ifdef USE_STREAM
+  res = cuLaunchKernel(
+                       func_calc_norm[0], // call function
+                       block_num_x,       // gridDimX
+                       block_num_y,       // gridDimY
+                       1,                 // gridDimZ
+                       thread_num_x,      // blockDimX
+                       thread_num_y,      // blockDimY
+                       1,                 // blockDimZ
+                       sharedMemBytes,    // sharedMemBytes
+                       stream,            // hStream
+                       kernel_args_norm,  // kernel Parameter
+                       NULL               // extra
+                       );
+#else
   res = cuLaunchKernel(
                        func_calc_norm[0], // call function
                        block_num_x,       // gridDimX
@@ -609,148 +639,119 @@ FLOAT *calc_feature_byGPU
                        kernel_args_norm,  // kernel Parameter
                        NULL               // extra
                        );
+#endif
   MY_CUDA_CHECK(res, "cuLaunchKernel(calc_norm)");
   
+#ifdef USE_STREAM
+  /* synchronize CUDA Stream */
+  res = cuStreamSynchronize(stream);
+  MY_CUDA_CHECK(res, "cuStreamSynchronize(stream)");
+#else
   /* synchronize GPU threads */
   res = cuCtxSynchronize();
   MY_CUDA_CHECK(res, "cuCtxSynchronize(calc_norm)");
-
-
-
+#endif
+  
+  
+  
+  /* compute featuers */
+  void *kernel_args_feat[] = {
+    &hist_dev,
+    &norm_dev,
+    &feat_dev,
+    (void *)&out[0],
+    (void *)&out[1],
+    (void *)&blocks[0],
+    (void *)&blocks[1],
+    (void *)&level
+  };
+  
+  /* decide CUDA block shape */
+  thread_num_x = (out[1] < sqrt(max_thread_num)) ? 
+    out[1] : sqrt(max_thread_num);
+  thread_num_y = (out[0] < sqrt(max_thread_num)) ? 
+    out[0] : sqrt(max_thread_num);
+  
+  block_num_x = out[1] / thread_num_x;
+  block_num_y = out[0] / thread_num_y;
+  if (out[1] % thread_num_x != 0) block_num_x++;
+  if (out[0] % thread_num_y != 0) block_num_y++;
+  
+  sharedMemBytes = 0;
+  
+  /* execute GPU function */ 
+#ifdef USE_STREAM
+  res = cuLaunchKernel(
+                       func_calc_feat[0], // call function
+                       block_num_x,       // gridDimX
+                       block_num_y,       // gridDimY
+                       1,                 // gridDimZ
+                       thread_num_x,      // blockDimX
+                       thread_num_y,      // blockDimY
+                       1,                 // blockDimZ
+                       sharedMemBytes,    // sharedMemBytes
+                       stream,            // hStream
+                       kernel_args_feat,  // kernel Parameter
+                       NULL               // extra
+                       );
+#else
+  res = cuLaunchKernel(
+                       func_calc_feat[0], // call function
+                       block_num_x,       // gridDimX
+                       block_num_y,       // gridDimY
+                       1,                 // gridDimZ
+                       thread_num_x,      // blockDimX
+                       thread_num_y,      // blockDimY
+                       1,                 // blockDimZ
+                       sharedMemBytes,    // sharedMemBytes
+                       NULL,              // hStream
+                       kernel_args_feat,  // kernel Parameter
+                       NULL               // extra
+                       );
+#endif
+  MY_CUDA_CHECK(res, "cuLaunchKernel(calc_feat)");
+  
+#ifdef USE_STREAM
+  /* synchronize CUDA Stream */
+  res = cuStreamSynchronize(stream);
+  MY_CUDA_CHECK(res, "cuStreamSynchronize(stream)");
+#else
   /* synchronize GPU threads */
   res = cuCtxSynchronize();
-  MY_CUDA_CHECK(res, "cuCtxSynchronize(calc_hist)");
-
+  MY_CUDA_CHECK(res, "cuCtxSynchronize(calc_feat)");
+#endif
   
-  /* download data from GPU */
-   unsigned long long int ptr_hist_dev = (unsigned long long int)hist_dev + hist_ptr_incrementer[level];
-   res = cuMemcpyDtoH((void *)hist_tmp, (CUdeviceptr)ptr_hist_dev, blocks[0]*blocks[1]*18*sizeof(FLOAT));
-   MY_CUDA_CHECK(res, "cuMemcpyDtoH(hist_dev)");
-
-   unsigned long long int ptr_norm_dev = (unsigned long long int)norm_dev + norm_ptr_incrementer[level];
-   res = cuMemcpyDtoH((void *)norm_tmp, (CUdeviceptr)ptr_norm_dev, blocks[0]*blocks[1]*sizeof(FLOAT));
-   MY_CUDA_CHECK(res, "cuMemcpyDtoH(norm_dev)");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    /* compute featuers */
-    for (int x=0; x<out[1]; x++) {
-      for (int y=0; y<out[0]; y++) {
-        FLOAT *dst = feat + x*out[0] + y;
-        FLOAT *src, *p, n1, n2, n3, n4;
-
-        //        p = norm + (x+1)*blocks[0] + y+1;
-        p = norm_tmp + (x+1)*blocks[0] + y+1;
-        n1 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
-
-        //        p = norm + (x+1)*blocks[0] + y;
-        p = norm_tmp + (x+1)*blocks[0] + y;
-        n2 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
-
-        //        p = norm + x*blocks[0] + y+1;
-        p = norm_tmp + x*blocks[0] + y+1;
-        n3 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
-
-        //        p = norm + x*blocks[0] + y;
-        p = norm_tmp + x*blocks[0] + y;
-        n4 = 1.0 / sqrt(*p + *(p+1) + *(p+blocks[0]) + *(p+blocks[0]+1) + eps);
-
-        FLOAT t1 = 0;
-        FLOAT t2 = 0;
-        FLOAT t3 = 0;
-        FLOAT t4 = 0;
-
-        /* contrast-sensitive features */
-        //        src = hist + (x+1)*blocks[0] + (y+1);
-        src = hist_tmp + (x+1)*blocks[0] + (y+1);
-        for (int o=0; o<18; o++) {
-          FLOAT h1 = min_2(*src * n1);
-          FLOAT h2 = min_2(*src * n2);
-          FLOAT h3 = min_2(*src * n3);
-          FLOAT h4 = min_2(*src * n4);
-
-          *dst = 0.5 * (h1 + h2 + h3 + h4);
-
-          t1 += h1;
-          t2 += h2;
-          t3 += h3;
-          t4 += h4;
-
-          dst += out[0]*out[1];
-          src += blocks[0]*blocks[1];
-        }
-
-        /* contrast-insensitive features */
-        //        src = hist + (x+1)*blocks[0] + (y+1);
-        src = hist_tmp + (x+1)*blocks[0] + (y+1);
-        for (int o=0; o<9; o++) {
-          FLOAT sum = *src + *(src + 9*blocks[0]*blocks[1]);
-          FLOAT h1 = min_2(sum * n1);
-          FLOAT h2 = min_2(sum * n2);
-          FLOAT h3 = min_2(sum * n3);
-          FLOAT h4 = min_2(sum * n4);
-
-          *dst = 0.5 * (h1 + h2 + h3 + h4);
-
-          dst += out[0]*out[1];
-          src += blocks[0]*blocks[1];
-        }
-
-        /* texture features */
-        *dst = 0.2357 * t1;
-        dst += out[0]*out[1];
-
-        *dst = 0.2357 * t2;
-        dst += out[0]*out[1];
-
-        *dst = 0.2357 * t3;
-        dst += out[0]*out[1];
-
-        *dst = 0.2357 * t4;
-      }
-    }
- 
-    //    free(hist);
-    free(hist_tmp);
-    //    free(norm);
-    free(norm_tmp);
-
-	/* size of feature(output) */
-	*FTSIZE     = out[0];
-    *(FTSIZE+1) = out[1];
-
-	
-    //	printf("feat%f\n",*(feat));
-    return(feat);
-
+  
+  
+  
+  
+  
+  
+  
+  
+#ifdef USE_STREAM  
+  /* destroy CUDA Stream */
+  res = cuStreamDestroy(stream);
+  MY_CUDA_CHECK(res, "cuStreamDestory(stream)");
+#endif
+  
+  
+  
+  
+  
+  
+  
+  //    free(hist);
+  //    free(norm);
+  
+  /* size of feature(output) */
+  *FTSIZE     = out[0];
+  *(FTSIZE+1) = out[1];
+  
+  
+  //	printf("feat%f\n",*(feat));
+  //  return(feat);
+  
 }
 
 
@@ -838,24 +839,30 @@ void* feat_calc_forGPU(void *thread_arg)
   int          level    = args->F_C;
   CUdeviceptr  hist_dev = args->hist_dev;
   CUdeviceptr  norm_dev = args->norm_dev;
-  FLOAT       *feat     = args->feat;
-  unsigned long long int *hist_ptr_incrementer = args->hist_ptr_incrementer;
-  unsigned long long int *norm_ptr_incrementer = args->norm_ptr_incrementer;
+  CUdeviceptr  feat_dev = args->feat_dev;
   //FLOAT       *Out   = calc_feature(args->IM, args->ISIZE, args->FSIZE, args->sbin);			
 
-  FLOAT       *Out   = calc_feature_byGPU(IM,
-                                          ISIZE,
-                                          FSIZE, 
-                                          sbin,
-                                          level,
-                                          hist_dev,
-                                          norm_dev,
-                                          feat,
-                                          hist_ptr_incrementer,
-                                          norm_ptr_incrementer
-                                          );
+  // FLOAT       *Out   = calc_feature_byGPU(IM,
+  //                                         ISIZE,
+  //                                         FSIZE, 
+  //                                         sbin,
+  //                                         level,
+  //                                         hist_dev,
+  //                                         norm_dev,
+  //                                         feat_dev
+  //                                         );
+  calc_feature_byGPU(IM,
+                     ISIZE,
+                     FSIZE, 
+                     sbin,
+                     level,
+                     hist_dev,
+                     norm_dev,
+                     feat_dev
+                     );
   
-  args->Out = Out;			
+  
+  //  args->Out = Out;			
 
   //_endthreadex(0);
   //return(0);
@@ -881,9 +888,7 @@ void ini_thread_data_fouGPU(thread_data_forGPU *TD,
                             int level,
                             CUdeviceptr hist_dev,
                             CUdeviceptr norm_dev,
-                            FLOAT *feat,
-                            unsigned long long int *hist_ptr_incrementer,
-                            unsigned long long int *norm_ptr_incrementer
+                            CUdeviceptr feat_dev
                             )
 {
   TD->IM       = IM; 
@@ -894,9 +899,7 @@ void ini_thread_data_fouGPU(thread_data_forGPU *TD,
   TD->F_C      = level;
   TD->hist_dev = hist_dev;
   TD->norm_dev = norm_dev;
-  TD->feat = feat;
-  TD->hist_ptr_incrementer = hist_ptr_incrementer;
-  TD->norm_ptr_incrementer = norm_ptr_incrementer;
+  TD->feat_dev = feat_dev;
 }
 
 
@@ -1159,6 +1162,14 @@ FLOAT **calc_f_pyramid
   res = cuMemAlloc(&norm_ptr_incrementer_dev, LEN*sizeof(unsigned long long int));
   MY_CUDA_CHECK(res, "cuMemAlloc(norm_ptr_incrementer_dev)");
 
+  CUdeviceptr feat_dev;
+  res = cuMemAlloc(&feat_dev, sum_size_feat);
+  MY_CUDA_CHECK(res, "cuMemAlloc(feat_dev)");
+
+  CUdeviceptr feat_ptr_incrementer_dev;
+  res = cuMemAlloc(&feat_ptr_incrementer_dev, LEN*sizeof(unsigned long long int));
+  MY_CUDA_CHECK(res, "cuMemAlloc(feat_ptr_incrementer_dev)");
+
   /* upload resized image data */
   unsigned long long int ptr_resized_image_dev = (unsigned long long int)resized_image_dev;
   for (int level=0; level<LEN; level++)
@@ -1196,6 +1207,12 @@ FLOAT **calc_f_pyramid
   res = cuMemcpyHtoD(norm_ptr_incrementer_dev, norm_ptr_incrementer, LEN*sizeof(unsigned long long int));
   MY_CUDA_CHECK(res, "cuMemcpyHtoD(norm_ptr_incrementer_dev)");
 
+  res = cuMemcpyHtoD(feat_dev, &feat[0][0], sum_size_feat);
+  MY_CUDA_CHECK(res, "cuMemcpyHtoD(feat_dev)");
+
+  res = cuMemcpyHtoD(feat_ptr_incrementer_dev, feat_ptr_incrementer, LEN*sizeof(unsigned long long int));
+  MY_CUDA_CHECK(res, "cuMemcpyHtoD(feat_ptr_incrementer_dev)");
+
   /* get handle to texture memory on GPU*/
  CUtexref resized_image_texref;
 #ifdef USE_FLOAT_AS_DECIMAL
@@ -1224,7 +1241,11 @@ FLOAT **calc_f_pyramid
 
   CUtexref norm_ptr_incrementer_texref;
   res = cuModuleGetTexRef(&norm_ptr_incrementer_texref, module[0], "norm_ptr_incrementer");
-  MY_CUDA_CHECK(res, "cuModuleGetTexRef(hist_ptr_incrementer)");
+  MY_CUDA_CHECK(res, "cuModuleGetTexRef(norm_ptr_incrementer)");
+
+  CUtexref feat_ptr_incrementer_texref;
+  res = cuModuleGetTexRef(&feat_ptr_incrementer_texref, module[0], "feat_ptr_incrementer");
+  MY_CUDA_CHECK(res, "cuModuleGetTexRef(feat_ptr_incrementer)");
 
   /* bind to texture memory on GPU */
   res = cuTexRefSetAddress(NULL, resized_image_texref, resized_image_dev, sum_size_image);
@@ -1241,6 +1262,9 @@ FLOAT **calc_f_pyramid
 
   res = cuTexRefSetAddress(NULL, norm_ptr_incrementer_texref, norm_ptr_incrementer_dev, LEN*sizeof(unsigned long long int));
   MY_CUDA_CHECK(res, "cuTexRefSetAddress(norm_ptr_incrementer_dev)");
+
+  res = cuTexRefSetAddress(NULL, feat_ptr_incrementer_texref, feat_ptr_incrementer_dev, LEN*sizeof(unsigned long long int));
+  MY_CUDA_CHECK(res, "cuTexRefSetAddress(feat_ptr_incrementer_dev)");
 
   /* texture memory configuration */
   //  res = cuTexRefSetFlags(resized_image_texref, CU_TRSF_NORMALIZED_COORDINATES);
@@ -1262,6 +1286,10 @@ FLOAT **calc_f_pyramid
   //  res = cuTexRefSetFlags(norm_ptr_incrementer_texref, CU_TRSF_NORMALIZED_COORDINATES);
   res = cuTexRefSetFlags(norm_ptr_incrementer_texref, CU_TRSF_READ_AS_INTEGER);
   MY_CUDA_CHECK(res, "cuTexRefSetFlags(norm_ptr_incrementer_texref)");
+
+  //  res = cuTexRefSetFlags(feat_ptr_incrementer_texref, CU_TRSF_NORMALIZED_COORDINATES);
+  res = cuTexRefSetFlags(feat_ptr_incrementer_texref, CU_TRSF_READ_AS_INTEGER);
+  MY_CUDA_CHECK(res, "cuTexRefSetFlags(feat_ptr_incrementer_texref)");
   
 #ifdef USE_FLOAT_AS_DECIMAL
   {
@@ -1287,6 +1315,9 @@ FLOAT **calc_f_pyramid
   res = cuTexRefSetFormat(norm_ptr_incrementer_texref, CU_AD_FORMAT_UNSIGNED_INT32, 2);
   MY_CUDA_CHECK(res, "cuTexRefSetFormat(norm_ptr_incrementer_texref)");
 
+  res = cuTexRefSetFormat(feat_ptr_incrementer_texref, CU_AD_FORMAT_UNSIGNED_INT32, 2);
+  MY_CUDA_CHECK(res, "cuTexRefSetFormat(feat_ptr_incrementer_texref)");
+
 
   /*****************************************************************/
   // for time measurement
@@ -1299,7 +1330,7 @@ FLOAT **calc_f_pyramid
   float time_pre_launch;
   res = cuEventElapsedTime(&time_pre_launch, pre_launch_start, pre_launch_end);
   MY_CUDA_CHECK(res, "cuEventElapsedTime(pre_launch)");
-  printf("\n-----pre launch   : %f", time_pre_launch);
+  printf("\n-----pre launch   : %f\n", time_pre_launch);
 
   res = cuEventDestroy(pre_launch_start);
   MY_CUDA_CHECK(res, "cuEventDestroy(pre_launch_start)");
@@ -1332,9 +1363,7 @@ FLOAT **calc_f_pyramid
                              ii,
                              hist_dev,
                              norm_dev,
-                             feat[ii],
-                             hist_ptr_incrementer,
-                             norm_ptr_incrementer
+                             feat_dev
                              );  //initialize thread
       
       //      if( pthread_create(&ts[t_count], NULL, feat_calc, (void*)&td[t_count]))
@@ -1361,9 +1390,7 @@ FLOAT **calc_f_pyramid
                              ii+interval,
                              hist_dev,
                              norm_dev,
-                             feat[ii+interval],
-                             hist_ptr_incrementer,
-                             norm_ptr_incrementer
+                             feat_dev
                              );	//initialize thread
 
 
@@ -1391,9 +1418,7 @@ FLOAT **calc_f_pyramid
                                  jj+interval,
                                  hist_dev,
                                  norm_dev,
-                                 feat[jj+interval],
-                                 hist_ptr_incrementer,
-                                 norm_ptr_incrementer
+                                 feat_dev
                                  ); //initialize thread
           //          if(pthread_create(&ts[t_count], NULL, feat_calc, (void*)&td[t_count]))
           if(pthread_create(&ts[t_count], NULL, feat_calc_forGPU, (void*)&td[t_count]))
@@ -1408,12 +1433,17 @@ FLOAT **calc_f_pyramid
   for(int ss=0; ss<LEN; ss++)
     {
       pthread_join(ts[ss], NULL);
-      feat[td[ss].F_C] = td[ss].Out; // ‚±‚±‚Å“Á’¥—Ê‚ð‚Ð‚Æ‚Â‚Ì”z—ñ‚É‚Ü‚Æ‚ß‚é
+      //      feat[td[ss].F_C] = td[ss].Out; // ‚±‚±‚Å“Á’¥—Ê‚ð‚Ð‚Æ‚Â‚Ì”z—ñ‚É‚Ü‚Æ‚ß‚é
 
       memcpy(&FTSIZE[td[ss].F_C*2], td[ss].FSIZE, sizeof(int)*2);
 
       close(ts[ss]);
     }
+
+  /* download output feature from GPU */
+  res = cuMemcpyDtoH((void *)&feat[0][0], feat_dev, sum_size_feat);
+  MY_CUDA_CHECK(res, "cuMemcpyDtoH(feat_dev)");
+
   
   /* release original image */
   s_free(org_image);
@@ -1458,6 +1488,12 @@ FLOAT **calc_f_pyramid
 
   res = cuMemFree(norm_ptr_incrementer_dev);
   MY_CUDA_CHECK(res, "cuMemFree(norm_ptr_incrementer_dev)");
+
+  res = cuMemFree(feat_dev);
+  MY_CUDA_CHECK(res, "cuMemFree(feat_dev)");
+
+  res = cuMemFree(feat_ptr_incrementer_dev);
+  MY_CUDA_CHECK(res, "cuMemFree(feat_ptr_incrementer_dev)");
 
 
   /* release thread information */
