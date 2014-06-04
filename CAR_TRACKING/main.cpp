@@ -155,6 +155,7 @@ int main(void)
   //load laser and movie data
   //for(int im=ss;im<2000;im++)
   for(int im=1;im<=11;im++)
+  //  for(int im=1;im<=1;im++)      // for profile
     {
       gettimeofday(&tv_1process_start, NULL);
       time_memcpy = 0;
@@ -308,8 +309,8 @@ int main(void)
       printf("1process : %f\n", one_process);
 #endif
 
-
 #if 1
+      //#if 0 // for profile
       printf("\n****** To finish program, type \"Esc\" key *****\n");
       int IN_KEY=cvWaitKey(0);
       //      if(IN_KEY==0x1b) break;

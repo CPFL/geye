@@ -950,10 +950,23 @@ static inline int
 min_i(int x, int y) 
 {return (x <= y ? x : y);}
 
+#ifdef USE_FLOAT_AS_DECIMAL
+/************************************************/
+/* atomic function dealing with float precision */
+__device__
+static inline float
+atomicAdd_float(float *address, float val)
+{
+  return atomicAdd(address, val);      // atomicAdd must be called from "__device__" function
+}
+/*************************************************/
+
+#else  /* ifdef USE_FLOAT_AS_DECIMAL */
+
 /*************************************************/
 /* atomic function dealing with double precision */
 __device__ 
-double 
+static inline double 
 atomicAdd_double
 (double *address, double val)
 {
@@ -966,21 +979,13 @@ atomicAdd_double
   return __longlong_as_double(old);
 }
 /*************************************************/
+#endif  /* ifdef USE_FLOAT_AS_DECIMAL */
 
-/************************************************/
-/* atomic function dealing with float precision */
-__device__
-void
-atomicAdd_float(float *address, float val)
-{
-  atomicAdd(address, val);      // atomicAdd must be called from "__device__" function
-}
-/*************************************************/
 
 /***********************************************************/
 /* function which cast from int2 to unsigned long long int */
 __device__
-unsigned long long int
+static inline unsigned long long int
 hiloint2uint64(int hi, int lo)
 {
   int combined[] = {hi, lo};
@@ -1022,11 +1027,10 @@ calc_hist
   const FLOAT Hsin[9] = {0.0000, 0.3420, 0.6428, 0.8660, 0.9848, 0.9848, 0.8660, 0.6428, 0.3420};
 
   /* adjust pointer position */
-  int base_index = tex1Dfetch(image_idx_incrementer, level);
+  int   base_index     = tex1Dfetch(image_idx_incrementer, level);
   uint2 ptr_hist_uint2 = tex1Dfetch(hist_ptr_incrementer, level);
   unsigned long long int ptr_hist = (unsigned long long int)hist_top + hiloint2uint64(ptr_hist_uint2.x, ptr_hist_uint2.y); // convert uint2 -> unsigned long long int
   FLOAT *hist = (FLOAT *)ptr_hist;
-
   
   /* input size */
   const int height = tex1Dfetch(resized_image_size, level*3);
@@ -1045,7 +1049,6 @@ calc_hist
   //   for (int y=1; y<visible[0]-1; y++) {
   if (1<=x && x<visible_1-1 && 1<=y && y<visible_0-1) 
     {
-
       /* first color channel */
       base_index += min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
       FLOAT dx, dy;
@@ -1113,16 +1116,23 @@ calc_hist
       FLOAT v3  = dx3*dx3 + dy3*dy3;
 
       /* pick channel with strongest gradient */
-      if (v2 > v) {
-        v  = v2;
-        dx = dx2;
-        dy = dy2;
-      }
-      if (v3 > v) {
-        v  = v3;
-        dx = dx3;
-        dy = dy3;
-      }
+      // if (v2 > v) {
+      //   v  = v2;
+      //   dx = dx2;
+      //   dy = dy2;
+      // }
+      dx = (v2 > v) ? dx2 : dx;
+      dy = (v2 > v) ? dy2 : dy;
+      v  = (v2 > v) ? v2 : v;
+      // if (v3 > v) {
+      //   v  = v3;
+      //   dx = dx3;
+      //   dy = dy3;
+      // }
+      dx = (v3 > v) ? dx3 : dx;
+      dy = (v3 > v) ? dy3 : dy;
+      v  = (v3 > v) ? v3 : v;
+
       
       /* snap to one of 18 orientations */
       FLOAT best_dot = 0;
@@ -1153,44 +1163,66 @@ calc_hist
       FLOAT vy1 = 1.0 - vy0;
       v = sqrt((double)v);
       
-
+      
 #ifdef USE_FLOAT_AS_DECIMAL
-        {
-          if (ixp >= 0 && iyp >= 0) {
+      {
+        /* dummy variable to reduce warp divergence */
+        //        float retval = 0;
+        if (ixp >= 0 && iyp >= 0)
+          {
             atomicAdd_float((float *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx1*vy1*v);
           }
-          
-          if (ixp+1 < blocks[1] && iyp >= 0) {
+        // retval = (ixp >= 0 && iyp >= 0) ? 
+        //   atomicAdd_float((float *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx1*vy1*v) :
+        //   0;
+        
+        if (ixp+1 < blocks[1] && iyp >= 0) 
+          {
             atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx0*vy1*v);
           }
-          
-          if (ixp >= 0 && iyp+1 < blocks[0]) {
+        // retval = (ixp+1 < blocks[1] && iyp >= 0) ?
+        //   atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (float)vx0*vy1*v) : 
+        //   0;
+        
+        if (ixp >= 0 && iyp+1 < blocks[0]) 
+          {
             atomicAdd_float((float *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx1*vy0*v);
           }
-          
-          if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
+        // retval = (ixp >= 0 && iyp+1 < blocks[0]) ? 
+        //   atomicAdd_float((float *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx1*vy0*v) : 
+        //   0;
+        
+        if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) 
+          {
             atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx0*vy0*v);
           }
-        }
-#else
-        {
-          if (ixp >= 0 && iyp >= 0) {
+        // retval = (ixp+1 < blocks[1] && iyp+1 < blocks[0]) ? 
+        //   atomicAdd_float((float *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (float)vx0*vy0*v) : 
+        //   0;
+      }
+#else  /* ifdef USE_FLOAT_AS_DECIMAL */
+      {
+        if (ixp >= 0 && iyp >= 0) 
+          {
             atomicAdd_double((double *)(hist + ixp*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (double)vx1*vy1*v);
           }
-          
-          if (ixp+1 < blocks[1] && iyp >= 0) {
+        
+        if (ixp+1 < blocks[1] && iyp >= 0) 
+          {
             atomicAdd_double((double *)(hist + (ixp+1)*blocks[0] + iyp + best_o*blocks[0]*blocks[1]), (double)vx0*vy1*v);
           }
-          
-          if (ixp >= 0 && iyp+1 < blocks[0]) {
+        
+        if (ixp >= 0 && iyp+1 < blocks[0]) 
+          {
             atomicAdd_double((double *)(hist + ixp*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (double)vx1*vy0*v);
           }
-          
-          if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) {
+        
+        if (ixp+1 < blocks[1] && iyp+1 < blocks[0]) 
+          {
             atomicAdd_double((double *)(hist + (ixp+1)*blocks[0] + (iyp+1) + best_o*blocks[0]*blocks[1]), (double)vx0*vy0*v);
           }
-        }
-#endif
+      }
+#endif  /* ifdef USE_FLOAT_AS_DECIMAL */
       
     }
       
