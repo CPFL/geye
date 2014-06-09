@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <pthread.h>
 //ORIGINAL header files
 #include "Common.h"
 
@@ -32,6 +33,15 @@ FLOAT *resize(FLOAT *src,int *sdims,int *odims,FLOAT scale);
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#define USE_PTHREAD
+
+typedef struct {
+  FLOAT *src_top;
+  int *src_size;
+  FLOAT *dst_top;
+  int *dst_size;
+}resize_thread_arg;
+
 
 /*********************************************/
 /* sub function to get pixel values from src */
@@ -53,8 +63,14 @@ FLOAT getPixelVal(FLOAT *src, int x, int y, int width, int height)
 /***************************************************************/
 /* image resizing function using bilinear interpolation method */
 /***************************************************************/
-void bilinear_resizing(FLOAT *src_top, int *src_size, FLOAT *dst_top, int *dst_size)
+void *bilinear_resizing(void *arg)
 {
+  resize_thread_arg *this_arg = (resize_thread_arg *)arg;
+  FLOAT *src_top  = this_arg->src_top;
+  int   *src_size = this_arg->src_size;
+  FLOAT *dst_top  = this_arg->dst_top;
+  int   *dst_size = this_arg->dst_size;
+
   const int src_height = src_size[0];
   const int src_width  = src_size[1];
   const int dst_height = dst_size[0];
@@ -115,6 +131,8 @@ void bilinear_resizing(FLOAT *src_top, int *src_size, FLOAT *dst_top, int *dst_s
             }
         }
     }
+
+  return (void *)NULL;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -131,6 +149,17 @@ void resize_byGPU(FLOAT *org_image,
                   int interval,
                   int LEN)
 {
+  
+#ifdef USE_PTHREAD  
+  /* pthread handler */
+  /* to calculate all resized image, the required number of threads is (LEN - interval) */
+  pthread_t *thread = (pthread_t *)calloc(LEN - interval, sizeof(pthread_t));
+#endif
+  
+  /* structure to carry data to pthread function */
+  resize_thread_arg *args = (resize_thread_arg *)calloc(LEN - interval, sizeof(resize_thread_arg));
+  int thread_count = 0;
+    
   /* calculate sum size of resized image */
   int sum_size_image = 0;
   for(int level=0; level<LEN; level++)
@@ -142,7 +171,7 @@ void resize_byGPU(FLOAT *org_image,
   
   /* allocate memory region for resized image */
   FLOAT *resized_image_dst = (FLOAT *)calloc(sum_size_image, sizeof(FLOAT));
-
+  
   /* distribute memory region to each resized image */
   unsigned long long int ptr_resized_image = (unsigned long long int)resized_image_dst;
   for (int level=0; level<LEN; level++)
@@ -150,15 +179,49 @@ void resize_byGPU(FLOAT *org_image,
       resized_image[level] = (FLOAT *)(ptr_resized_image);
       ptr_resized_image += resized_image_size[level*3] * resized_image_size[level*3 + 1] * resized_image_size[level*3 + 2] * sizeof(FLOAT);
     }
-
+  
   /* resizing */
   for (int level=0; level<interval; level++)
     {
-      bilinear_resizing(org_image,
-                        org_image_size,
-                        resized_image[level],
-                        &resized_image_size[level*3]);
+      /* assign data for pthread function */
+      args[thread_count].src_top  = org_image;
+      args[thread_count].src_size = org_image_size;
+      args[thread_count].dst_top  = resized_image[level];
+      args[thread_count].dst_size = &resized_image_size[level*3];
+      
+#ifdef USE_PTHREAD
+      pthread_create(&thread[thread_count], NULL, bilinear_resizing, (void *)&args[thread_count]);
+      thread_count++;
+#else
+      bilinear_resizing((void *)&args[thread_count]);
+#endif
     }
+  
+  
+  /* extra resizing */
+  for (int level=2*interval; level<LEN; level++)
+    {
+      /* assign data for pthread function */
+      args[thread_count].src_top  = org_image;
+      args[thread_count].src_size = org_image_size;
+      args[thread_count].dst_top  = resized_image[level];
+      args[thread_count].dst_size = &resized_image_size[level*3];
+      
+#ifdef USE_PTHREAD
+      pthread_create(&thread[thread_count], NULL, bilinear_resizing, (void *)&args[thread_count]);
+      thread_count++;
+#else
+      bilinear_resizing((void *)&args[thread_count]);
+#endif
+    }
+  
+#ifdef USE_PTHREAD
+  /* wait for all pthread complete its work */
+  for (int counter=0; counter<LEN-interval; counter++)
+    {
+      pthread_join(thread[counter], NULL);
+    }
+#endif
   
   /* (interval <= level < 2*interval) use same resize scale as (0 <= level < interval) */
   for (int level=interval; level<2*interval; level++)
@@ -167,14 +230,11 @@ void resize_byGPU(FLOAT *org_image,
       memcpy(resized_image[level], resized_image[level-interval], copy_size);
     }
   
-  /* extra resizing */
-  for (int level=2*interval; level<LEN; level++)
-    {
-      bilinear_resizing(org_image,
-                        org_image_size,
-                        resized_image[level],
-                        &resized_image_size[level*3]);
-    }
+  /* cleanup */
+#ifdef USE_PTHREAD
+  free(thread);
+#endif
+  free(args);
 
 }
 
