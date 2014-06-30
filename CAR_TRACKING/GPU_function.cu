@@ -1050,23 +1050,30 @@ calc_hist
   if (1<=x && x<visible_1-1 && 1<=y && y<visible_0-1) 
     {
       /* first color channel */
-      base_index += min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
+      //      base_index += min_i(x, dims[1]-2)*dims[0] + min_i(y, dims[0]-2);
+      base_index += min_i(x, dims[1]-2) + min_i(y, dims[0]-2)*dims[1];
       FLOAT dx, dy;
 
 #ifdef USE_FLOAT_AS_DECIMAL
         {
-          dy = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
-          dx = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+          // dy = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+          // dx = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+          dx = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+          dy = tex1Dfetch(resized_image, base_index + dims[1]) - tex1Dfetch(resized_image, base_index - dims[1]) ;
         }
 #else
         {
           int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
           int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
-          dy = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-
-          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
-          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+          // dy = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
           dx = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+
+          // arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+          // arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+          // dx = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+          arg1 = tex1Dfetch(resized_image_double, base_index + dims[1]);
+          arg2 = tex1Dfetch(resized_image_double, base_index - dims[1]);
+          dy = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
         }
 #endif
       FLOAT  v  = dx*dx + dy*dy;
@@ -1077,18 +1084,24 @@ calc_hist
 
 #ifdef USE_FLOAT_AS_DECIMAL
         {
-          dy2 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
-          dx2 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+          // dy2 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+          // dx2 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+          dx2 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+          dy2 = tex1Dfetch(resized_image, base_index + dims[1]) - tex1Dfetch(resized_image, base_index - dims[1]) ;
         }
       #else
         {
           int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
           int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
-          dy2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-
-          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
-          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+          // dy2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
           dx2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+
+          // arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+          // arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+          // dx2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+          arg1 = tex1Dfetch(resized_image_double, base_index + dims[1]);
+          arg2 = tex1Dfetch(resized_image_double, base_index - dims[1]);
+          dy2 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
         }
 #endif
       FLOAT v2  = dx2*dx2 + dy2*dy2;
@@ -1099,18 +1112,24 @@ calc_hist
  
 #ifdef USE_FLOAT_AS_DECIMAL
         {
-          dy3 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
-          dx3 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+          // dy3 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+          // dx3 = tex1Dfetch(resized_image, base_index + dims[0]) - tex1Dfetch(resized_image, base_index - dims[0]) ;
+          dx3 = tex1Dfetch(resized_image, base_index + 1) - tex1Dfetch(resized_image, base_index - 1) ;
+          dy3 = tex1Dfetch(resized_image, base_index + dims[1]) - tex1Dfetch(resized_image, base_index - dims[1]) ;
         }
 #else
         {
           int2 arg1 = tex1Dfetch(resized_image_double, base_index + 1);
           int2 arg2 = tex1Dfetch(resized_image_double, base_index - 1) ;
-          dy3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
-
-          arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
-          arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+          // dy3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
           dx3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+
+          // arg1 = tex1Dfetch(resized_image_double, base_index + dims[0]);
+          // arg2 = tex1Dfetch(resized_image_double, base_index - dims[0]);
+          // dx3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
+          arg1 = tex1Dfetch(resized_image_double, base_index + dims[1]);
+          arg2 = tex1Dfetch(resized_image_double, base_index - dims[1]);
+          dy3 = __hiloint2double(arg1.y, arg1.x) - __hiloint2double(arg2.y, arg2.x);
         }
 #endif
       FLOAT v3  = dx3*dx3 + dy3*dy3;
@@ -1596,4 +1615,85 @@ calc_feat
   /*************************************************************/
   /*************************************************************/
   
+}
+
+/* texture declaration for original image */
+#ifdef USE_FLOAT_AS_DECIMAL
+texture<float, cudaTextureType2DLayered, cudaReadModeElementType> org_image;
+#else
+texture<uint2, cudaTextureType2DLayered, cudaReadModeElementType> org_image;
+#endif
+
+#ifndef USE_FLOAT_AS_DECIMAL
+#define NO_HARDWARE_SUPPORT
+#endif
+
+#ifdef NO_HARDWARE_SUPPORT
+__device__
+static inline
+double getPixelVal(int x, int y, int width, int height, int channel)
+{
+  int access_x = (x < 0) ? 0 : 
+    (x < width) ? x : (width-1);
+  
+  int access_y = (y < 0) ? 0 : 
+    (y < height) ? y : (height-1);
+
+  int2 retval = tex1Dfetch(org_image, channel*height*width + access_y*width + access_x);
+  return __hiloint2double(retval.y, retval.x);
+}
+#endif
+
+extern "C"
+__global__
+void
+resize
+(
+ int src_height,
+ int src_width,
+ FLOAT *dst_top,
+ int dst_height,
+ int dst_width,
+ FLOAT hfactor,
+ FLOAT wfactor,
+ int level
+ )
+{
+  int dst_x   = blockIdx.x*blockDim.x + threadIdx.x;
+  int dst_y   = blockIdx.y*blockDim.y + threadIdx.y;
+  int channel = blockIdx.z;
+
+  FLOAT *dst = dst_top + tex1Dfetch(image_idx_incrementer, level) + channel*dst_height*dst_width;
+
+  FLOAT src_x_decimal = wfactor * dst_x + 0.5f;
+  FLOAT src_y_decimal = hfactor * dst_y + 0.5f;
+
+#ifdef USE_FLOAT_AS_DECIMAL
+  if (dst_x < dst_width && dst_y < dst_height)
+    {
+      dst[dst_y*dst_width + dst_x] = (FLOAT)tex2DLayered(org_image, src_x_decimal, src_y_decimal, channel);
+    }
+#else
+  /* if "double" type is used to express decimal value, there is no hardware support */
+  int src_x = (int)src_x_decimal;
+  int src_y = (int)src_y_decimal;
+
+  double color[4] = {
+    getPixelVal(src_x, src_y, src_width, src_height, channel),
+    getPixelVal(src_x+1, src_y, src_width, src_height, channel),
+    getPixelVal(src_x, src_y+1, src_width, src_height, channel),
+    getPixelVal(src_x+1, src_y+1, src_width, src_height, channel)
+  };
+
+  double new_element = (src_x + 1 - src_x_decimal)*(src_y + 1 - src_y_decimal)*color[0] + 
+              (src_x_decimal - src_x)*(src_y + 1 - src_y_decimal)*color[1] + 
+              (src_x + 1 - src_x_decimal)*(src_y_decimal - src_y)*color[2] + 
+              (src_x_decimal - src_x)*(src_y_decimal - src_y)*color[3];
+
+  if (dst_x < dst_width && dst_y < dst_height) 
+    {
+      dst[dst_y*dst_width + dst_x] = new_element;
+    }
+
+#endif
 }

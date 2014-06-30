@@ -84,7 +84,7 @@ struct thread_data {
 	FLOAT *Out;
 };
 struct thread_data_forGPU {
-  FLOAT *IM;
+  //  FLOAT *IM;
   int    ISIZE[3];
   int    FSIZE[2];
   int    F_C;
@@ -106,18 +106,22 @@ FLOAT *ini_scales(Model_info *MI,IplImage *IM,int X,int Y); //initialize scales 
 int   *ini_featsize(Model_info *MI);                        //initialize feature size information matrix (extended to main)
 
 //subfunction
-FLOAT *Ipl_to_FLOAT(IplImage *Input);                                             //get intensity data (FLOAT) of input
+//FLOAT *Ipl_to_FLOAT(IplImage *Input);                                             //get intensity data (FLOAT) of input
+extern FLOAT *Ipl_to_FLOAT_forGPU(IplImage *Input);                                             //get intensity data (FLOAT) of input
 void   free_features(FLOAT **features,Model_info *MI);                            //release features
 FLOAT *calc_feature(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin);                  //calculate HOG features
-void calc_feature_byGPU(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin, int level, CUdeviceptr hist_dev, CUdeviceptr norm_dev, CUdeviceptr feat_dev, CUstream stream);                  //calculate HOG features
+//void calc_feature_byGPU(FLOAT *SRC,int *ISIZE,int *FTSIZE,int sbin, int level, CUdeviceptr hist_dev, CUdeviceptr norm_dev, CUdeviceptr feat_dev, CUstream stream);                  //calculate HOG features
+void calc_feature_byGPU(int *ISIZE,int *FTSIZE,int sbin, int level, CUdeviceptr hist_dev, CUdeviceptr norm_dev, CUdeviceptr feat_dev, CUstream stream);                  //calculate HOG features
 void   ini_thread_data(thread_data *TD,FLOAT *IM,int *INSIZE,int sbin,int level); //for thread-initialization
-void   ini_thread_data_fouGPU(thread_data_forGPU *TD,FLOAT *IM,int *INSIZE,int sbin,int level, CUdeviceptr hist_dev, CUdeviceptr norm_dev, CUdeviceptr feat_dev, CUstream stream); //for thread-initialization
+//void   ini_thread_data_fouGPU(thread_data_forGPU *TD,FLOAT *IM,int *INSIZE,int sbin,int level, CUdeviceptr hist_dev, CUdeviceptr norm_dev, CUdeviceptr feat_dev, CUstream stream); //for thread-initialization
+void   ini_thread_data_fouGPU(thread_data_forGPU *TD,int *INSIZE,int sbin,int level, CUdeviceptr hist_dev, CUdeviceptr norm_dev, CUdeviceptr feat_dev, CUstream stream); //for thread-initialization
 //unsigned __stdcall feat_calc(void *thread_arg);												//for thread_process													
 void* feat_calc(void *thread_arg); //for thread_process
 void* feat_calc_forGPU(void *thread_arg); //for thread_process
 
 //main function to calculate feature pyramid
 FLOAT **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,FLOAT *scale);		//calculate feature pyramid (extended to detect.c)
+
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -129,8 +133,11 @@ FLOAT **calc_f_pyramid(IplImage *Image,Model_info *MI,int *FTSIZE,FLOAT *scale);
 extern FLOAT *resize(FLOAT *src,int *sdims,int *odims,FLOAT scale); //resize image 
 
 // resize_GPU.cc
-extern FLOAT *resize_byGPU(FLOAT *org_image, int *org_image_size, FLOAT **resized_iamge, int *resized_image_size, int interval, int LEN); //resize image 
+//extern FLOAT *resize_byGPU(FLOAT *org_image, int *org_image_size, FLOAT **resized_iamge, int *resized_image_size, int interval, int LEN, CUstream *stream_array); //resize image 
+extern FLOAT *resize_byGPU(FLOAT *org_image, int *org_image_size, int *resized_image_size, int interval, int LEN, CUstream *stream_array); //resize image 
 extern void *calc_resized_image_size(int *org_image_size, int *resized_image_size, int interval, FLOAT sc, int max_scale, FLOAT *scale_array); // calculate resized image size
+extern void create_resized_image_texref(void); // create resized image texture reference
+extern void cleanup_about_resize(void); // Free GPU memory about resizing image 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -504,7 +511,7 @@ static pthread_barrier_t barrier;
 
 void calc_feature_byGPU
 (
- FLOAT *SRC,                    // resized image
+ // FLOAT *SRC,                    // resized image
  int *ISIZE,                    // resized image size (3 dimension)
  int *FTSIZE,                   // size of feature(output)
  int sbin,                      // 各フィルタ用ブロックサイズ決定要因
@@ -516,7 +523,7 @@ void calc_feature_byGPU
  )
 {
   /* rename argument */
-  FLOAT *resized_image      = SRC;
+  //  FLOAT *resized_image      = SRC;
   int   *resized_image_size = ISIZE;
 
   /* input size */
@@ -865,7 +872,7 @@ void* feat_calc(void *thread_arg)
 void* feat_calc_forGPU(void *thread_arg) 
 {
   thread_data_forGPU *args     = (thread_data_forGPU *)thread_arg;
-  FLOAT       *IM       = args->IM;
+  //  FLOAT       *IM       = args->IM;
   int         *ISIZE    = args->ISIZE;
   int         *FSIZE    = args->FSIZE;
   int          sbin     = args->sbin;
@@ -874,7 +881,7 @@ void* feat_calc_forGPU(void *thread_arg)
   CUdeviceptr  norm_dev = args->norm_dev;
   CUdeviceptr  feat_dev = args->feat_dev;
   CUstream     stream   = args->stream;
-  calc_feature_byGPU(IM,
+  calc_feature_byGPU(//IM,
                      ISIZE,
                      FSIZE, 
                      sbin,
@@ -901,7 +908,7 @@ void ini_thread_data(thread_data *TD,FLOAT *IM,int *INSIZE,int sbin,int level)
 }
 
 void ini_thread_data_fouGPU(thread_data_forGPU *TD,
-                            FLOAT *IM,
+                            //                            FLOAT *IM,
                             int *INSIZE,
                             int sbin,
                             int level,
@@ -911,7 +918,7 @@ void ini_thread_data_fouGPU(thread_data_forGPU *TD,
                             CUstream stream
                             )
 {
-  TD->IM       = IM; 
+  //  TD->IM       = IM; 
   memcpy(TD->ISIZE, INSIZE, sizeof(int)*3);
   TD->FSIZE[0] = 0;
   TD->FSIZE[1] = 0;
@@ -954,7 +961,8 @@ FLOAT **calc_f_pyramid
   int org_image_size[3]  = {Image->height, Image->width, Image->nChannels}; // original image size // (元INSIZE)
   
   /* Original image (FLOAT) */
-  FLOAT *org_image = Ipl_to_FLOAT(Image); // IplImageから各チャンネルの輝度を抽出 // (元D_I)
+//  FLOAT *org_image = Ipl_to_FLOAT(Image); // IplImageから各チャンネルの輝度を抽出 // (元D_I)
+  FLOAT *org_image = Ipl_to_FLOAT_forGPU(Image); // IplImageから各チャンネルの輝度を抽出 // (元D_I)
   
 #ifdef ORIGINAL
   /* features */
@@ -970,7 +978,7 @@ FLOAT **calc_f_pyramid
 #endif
   pthread_t   *ts = (pthread_t *)calloc(LEN, sizeof(HANDLE));	
   
-  FLOAT **resized_image      = (FLOAT**)calloc(LEN, sizeof(FLOAT*)); // リサイズされた画像 // (元RIM_S)
+  //  FLOAT **resized_image      = (FLOAT**)calloc(LEN, sizeof(FLOAT*)); // リサイズされた画像 // (元RIM_S)
   int    *resized_image_size = (int*)calloc(LEN*3, sizeof(int));     // リサイズされた画像のサイズ // (元RI_S)
   int     t_count            = 0;
   
@@ -1038,14 +1046,25 @@ FLOAT **calc_f_pyramid
                           scale
                           );
 
-
+#ifndef ORIGINAL
+  /* create CUDA Stream for each p-thread */
+  CUstream *stream = (CUstream *)malloc(LEN*sizeof(CUstream));
+  for (int level=0; level<LEN; level++)
+    {
+      res = cuStreamCreate(&stream[level], CU_STREAM_DEFAULT);
+      MY_CUDA_CHECK(res, "cuStreamCreate(stream)");
+    }
+#endif
+  
+  
   /* image resizing on GPU */
   resize_byGPU(org_image,
                org_image_size,
-               resized_image, 
+    //             resized_image, 
                resized_image_size, 
                interval,
-               LEN);
+               LEN,
+               stream);
       
   
   
@@ -1088,24 +1107,16 @@ FLOAT **calc_f_pyramid
 #ifndef ORIGINAL
   /*prepare for launch GPU kernel from each p-thread */
 
-  /* create CUDA Stream for each p-thread */
-  CUstream *stream = (CUstream *)malloc(LEN*sizeof(CUstream));
-  for (int level=0; level<LEN; level++)
-    {
-      res = cuStreamCreate(&stream[level], CU_STREAM_DEFAULT);
-      MY_CUDA_CHECK(res, "cuStreamCreate(stream)");
-    }
-
   /* allocat array to save pointer info */
-  int *image_idx_incrementer;
+  //  int *image_idx_incrementer;
   unsigned long long int *hist_ptr_incrementer;
   unsigned long long int *norm_ptr_incrementer;
   unsigned long long int *feat_ptr_incrementer;
 
-  res = cuMemHostAlloc((void **)&image_idx_incrementer,
-                       LEN*sizeof(int),
-                       CU_MEMHOSTALLOC_PORTABLE);
-  MY_CUDA_CHECK(res, "cuMemHostAlloc(image_idx_incrementer)");
+  // res = cuMemHostAlloc((void **)&image_idx_incrementer,
+  //                      LEN*sizeof(int),
+  //                      CU_MEMHOSTALLOC_PORTABLE);
+  // MY_CUDA_CHECK(res, "cuMemHostAlloc(image_idx_incrementer)");
   
   res = cuMemHostAlloc((void **)&hist_ptr_incrementer,
                        LEN*sizeof(unsigned long long int),
@@ -1122,7 +1133,7 @@ FLOAT **calc_f_pyramid
                        CU_MEMHOSTALLOC_PORTABLE);
   MY_CUDA_CHECK(res, "cuMemHostAlloc(feat_ptr_incrementer)");
   
-  int sum_size_image = 0;
+  //  int sum_size_image = 0;
   int sum_size_hist = 0;
   int sum_size_norm = 0;
   int sum_size_feat = 0;
@@ -1151,13 +1162,13 @@ FLOAT **calc_f_pyramid
       };
 
       /* save sum size until prior level */
-      image_idx_incrementer[level] = sum_size_image/sizeof(FLOAT);
+      //      image_idx_incrementer[level] = sum_size_image/sizeof(FLOAT);
       hist_ptr_incrementer[level]  = sum_size_hist;
       norm_ptr_incrementer[level]  = sum_size_norm;
       feat_ptr_incrementer[level]  = sum_size_feat;
       
       /* increment this level's size */
-      sum_size_image += height_inner*width_inner*depth_inner*sizeof(FLOAT);
+      //      sum_size_image += height_inner*width_inner*depth_inner*sizeof(FLOAT);
       sum_size_hist  += blocks_inner[0]*blocks_inner[1]*18*sizeof(FLOAT);
       sum_size_norm  += blocks_inner[0]*blocks_inner[1]*sizeof(FLOAT);
       sum_size_feat  += out_size[0]*out_size[1]*out_size[2]*sizeof(FLOAT);
@@ -1190,9 +1201,9 @@ FLOAT **calc_f_pyramid
   
 
   /* allocate GPU memory */
-  CUdeviceptr resized_image_dev;
-  res = cuMemAlloc(&resized_image_dev, sum_size_image);
-  MY_CUDA_CHECK(res, "cuMemAlloc(resized_image_dev)");
+  // CUdeviceptr resized_image_dev;
+  // res = cuMemAlloc(&resized_image_dev, sum_size_image);
+  // MY_CUDA_CHECK(res, "cuMemAlloc(resized_image_dev)");
 
   CUdeviceptr resized_image_size_dev;
   res = cuMemAlloc(&resized_image_size_dev, LEN*3*sizeof(int));
@@ -1202,9 +1213,9 @@ FLOAT **calc_f_pyramid
   res = cuMemAlloc(&hist_dev, sum_size_hist);
   MY_CUDA_CHECK(res, "cuMemAlloc(hist_dev)");
 
-  CUdeviceptr image_idx_incrementer_dev;
-  res = cuMemAlloc(&image_idx_incrementer_dev, LEN*sizeof(int));
-  MY_CUDA_CHECK(res, "cuMemAlloc(image_idx_incrementer)");
+  // CUdeviceptr image_idx_incrementer_dev;
+  // res = cuMemAlloc(&image_idx_incrementer_dev, LEN*sizeof(int));
+  // MY_CUDA_CHECK(res, "cuMemAlloc(image_idx_incrementer)");
 
   CUdeviceptr hist_ptr_incrementer_dev;
   res = cuMemAlloc(&hist_ptr_incrementer_dev, LEN*sizeof(unsigned long long int));
@@ -1227,21 +1238,21 @@ FLOAT **calc_f_pyramid
   MY_CUDA_CHECK(res, "cuMemAlloc(feat_ptr_incrementer_dev)");
 
   /* upload resized image data */
-  unsigned long long int ptr_resized_image_dev = (unsigned long long int)resized_image_dev;
-  for (int level=0; level<LEN; level++)
-    {
-      int height_inner = resized_image_size[level*3];
-      int width_inner  = resized_image_size[level*3 + 1];
-      int depth_inner  = resized_image_size[level*3 + 2];
+  // unsigned long long int ptr_resized_image_dev = (unsigned long long int)resized_image_dev;
+  // for (int level=0; level<LEN; level++)
+  //   {
+  //     int height_inner = resized_image_size[level*3];
+  //     int width_inner  = resized_image_size[level*3 + 1];
+  //     int depth_inner  = resized_image_size[level*3 + 2];
 
-      res = cuMemcpyHtoD((CUdeviceptr)ptr_resized_image_dev, 
-                         (void *)(&resized_image[level][0]),
-                         height_inner*width_inner*depth_inner*sizeof(FLOAT)
-                         );
-      MY_CUDA_CHECK(res, "cuMemcpyHtoD(resized_image)");
+  //     res = cuMemcpyHtoD((CUdeviceptr)ptr_resized_image_dev, 
+  //                        (void *)(&resized_image[level][0]),
+  //                        height_inner*width_inner*depth_inner*sizeof(FLOAT)
+  //                        );
+  //     MY_CUDA_CHECK(res, "cuMemcpyHtoD(resized_image)");
 
-      ptr_resized_image_dev += (unsigned long long int)height_inner*width_inner*depth_inner*sizeof(FLOAT);
-    }
+  //     ptr_resized_image_dev += (unsigned long long int)height_inner*width_inner*depth_inner*sizeof(FLOAT);
+  //   }
 
   /* upload resized image size to GPU */
   res = cuMemcpyHtoD(resized_image_size_dev, resized_image_size, LEN*3*sizeof(int));
@@ -1251,8 +1262,8 @@ FLOAT **calc_f_pyramid
   res = cuMemcpyHtoD(hist_dev, &hist[0][0], sum_size_hist);
   MY_CUDA_CHECK(res, "cuMemcpyHtoD(hist_dev)");
   
-  res = cuMemcpyHtoD(image_idx_incrementer_dev, image_idx_incrementer, LEN*sizeof(int));
-  MY_CUDA_CHECK(res, "cuMemcpyHtoD(image_idx_incrementer_dev)");
+  // res = cuMemcpyHtoD(image_idx_incrementer_dev, image_idx_incrementer, LEN*sizeof(int));
+  // MY_CUDA_CHECK(res, "cuMemcpyHtoD(image_idx_incrementer_dev)");
   
   res = cuMemcpyHtoD(hist_ptr_incrementer_dev, hist_ptr_incrementer, LEN*sizeof(unsigned long long int));
   MY_CUDA_CHECK(res, "cuMemcpyHtoD(hist_ptr_incrementer_dev)");
@@ -1270,26 +1281,27 @@ FLOAT **calc_f_pyramid
   MY_CUDA_CHECK(res, "cuMemcpyHtoD(feat_ptr_incrementer_dev)");
 
   /* get handle to texture memory on GPU*/
- CUtexref resized_image_texref;
-#ifdef USE_FLOAT_AS_DECIMAL
-  {
-    res = cuModuleGetTexRef(&resized_image_texref, module[0], "resized_image");
-    MY_CUDA_CHECK(res, "cuModuleGetTexRef(resized_image)");
-  }
-#else
-  {
-    res = cuModuleGetTexRef(&resized_image_texref, module[0], "resized_image_double");
-    MY_CUDA_CHECK(res, "cuModuleGetTexRef(resized_image)");
-  }
-#endif
+  create_resized_image_texref();
+//  CUtexref resized_image_texref;
+// #ifdef USE_FLOAT_AS_DECIMAL
+//   {
+//     res = cuModuleGetTexRef(&resized_image_texref, module[0], "resized_image");
+//     MY_CUDA_CHECK(res, "cuModuleGetTexRef(resized_image)");
+//   }
+// #else
+//   {
+//     res = cuModuleGetTexRef(&resized_image_texref, module[0], "resized_image_double");
+//     MY_CUDA_CHECK(res, "cuModuleGetTexRef(resized_image)");
+//   }
+// #endif
 
   CUtexref resized_image_size_texref;
   res = cuModuleGetTexRef(&resized_image_size_texref, module[0], "resized_image_size");
   MY_CUDA_CHECK(res, "cuModuleGetTexRef(resized_image_size)");
 
-  CUtexref image_idx_incrementer_texref;
-  res = cuModuleGetTexRef(&image_idx_incrementer_texref, module[0], "image_idx_incrementer");
-  MY_CUDA_CHECK(res, "cuModuleGetTexRef(image_idx_incrementer)");
+  // CUtexref image_idx_incrementer_texref;
+  // res = cuModuleGetTexRef(&image_idx_incrementer_texref, module[0], "image_idx_incrementer");
+  // MY_CUDA_CHECK(res, "cuModuleGetTexRef(image_idx_incrementer)");
 
   CUtexref hist_ptr_incrementer_texref;
   res = cuModuleGetTexRef(&hist_ptr_incrementer_texref, module[0], "hist_ptr_incrementer");
@@ -1304,14 +1316,14 @@ FLOAT **calc_f_pyramid
   MY_CUDA_CHECK(res, "cuModuleGetTexRef(feat_ptr_incrementer)");
 
   /* bind to texture memory on GPU */
-  res = cuTexRefSetAddress(NULL, resized_image_texref, resized_image_dev, sum_size_image);
-  MY_CUDA_CHECK(res, "cuTexRefSetAddress(resized_image_dev)");
+  // res = cuTexRefSetAddress(NULL, resized_image_texref, resized_image_dev, sum_size_image);
+  // MY_CUDA_CHECK(res, "cuTexRefSetAddress(resized_image_dev)");
 
   res = cuTexRefSetAddress(NULL, resized_image_size_texref, resized_image_size_dev, LEN*3*sizeof(int));
   MY_CUDA_CHECK(res, "cuTexRefSetAddress(resized_image_size_dev)");
 
-  res = cuTexRefSetAddress(NULL, image_idx_incrementer_texref, image_idx_incrementer_dev, LEN*sizeof(int));
-  MY_CUDA_CHECK(res, "cuTexRefSetAddress(image_idx_incrementer_dev)");
+  // res = cuTexRefSetAddress(NULL, image_idx_incrementer_texref, image_idx_incrementer_dev, LEN*sizeof(int));
+  // MY_CUDA_CHECK(res, "cuTexRefSetAddress(image_idx_incrementer_dev)");
 
   res = cuTexRefSetAddress(NULL, hist_ptr_incrementer_texref, hist_ptr_incrementer_dev, LEN*sizeof(unsigned long long int));
   MY_CUDA_CHECK(res, "cuTexRefSetAddress(hist_ptr_incrementer_dev)");
@@ -1323,17 +1335,17 @@ FLOAT **calc_f_pyramid
   MY_CUDA_CHECK(res, "cuTexRefSetAddress(feat_ptr_incrementer_dev)");
 
   /* texture memory configuration */
-  //  res = cuTexRefSetFlags(resized_image_texref, CU_TRSF_NORMALIZED_COORDINATES);
-  res = cuTexRefSetFlags(resized_image_texref, CU_TRSF_READ_AS_INTEGER);
-  MY_CUDA_CHECK(res, "cuTexRefSetFlags(resized_image_texref)");
+  // //  res = cuTexRefSetFlags(resized_image_texref, CU_TRSF_NORMALIZED_COORDINATES);
+  // res = cuTexRefSetFlags(resized_image_texref, CU_TRSF_READ_AS_INTEGER);
+  // MY_CUDA_CHECK(res, "cuTexRefSetFlags(resized_image_texref)");
 
   //  res = cuTexRefSetFlags(resized_image_size_texref, CU_TRSF_NORMALIZED_COORDINATES);
   res = cuTexRefSetFlags(resized_image_size_texref, CU_TRSF_READ_AS_INTEGER);
   MY_CUDA_CHECK(res, "cuTexRefSetFlags(resized_image_size_texref)");
 
-  //  res = cuTexRefSetFlags(image_idx_incrementer_texref, CU_TRSF_NORMALIZED_COORDINATES);
-  res = cuTexRefSetFlags(image_idx_incrementer_texref, CU_TRSF_READ_AS_INTEGER);
-  MY_CUDA_CHECK(res, "cuTexRefSetFlags(image_idx_incrementer_texref)");
+  // //  res = cuTexRefSetFlags(image_idx_incrementer_texref, CU_TRSF_NORMALIZED_COORDINATES);
+  // res = cuTexRefSetFlags(image_idx_incrementer_texref, CU_TRSF_READ_AS_INTEGER);
+  // MY_CUDA_CHECK(res, "cuTexRefSetFlags(image_idx_incrementer_texref)");
 
   //  res = cuTexRefSetFlags(hist_ptr_incrementer_texref, CU_TRSF_NORMALIZED_COORDINATES);
   res = cuTexRefSetFlags(hist_ptr_incrementer_texref, CU_TRSF_READ_AS_INTEGER);
@@ -1347,23 +1359,23 @@ FLOAT **calc_f_pyramid
   res = cuTexRefSetFlags(feat_ptr_incrementer_texref, CU_TRSF_READ_AS_INTEGER);
   MY_CUDA_CHECK(res, "cuTexRefSetFlags(feat_ptr_incrementer_texref)");
   
-#ifdef USE_FLOAT_AS_DECIMAL
-  {
-    res = cuTexRefSetFormat(resized_image_texref, CU_AD_FORMAT_FLOAT, 1);
-    MY_CUDA_CHECK(res, "cuTexRefSetFormat(resized_image_texref)");
-  }
-#else
-  {
-    res = cuTexRefSetFormat(resized_image_texref, CU_AD_FORMAT_UNSIGNED_INT32, 2);
-    MY_CUDA_CHECK(res, "cuTexRefSetFormat(resized_image_texref)");
-  }
-#endif
+// #ifdef USE_FLOAT_AS_DECIMAL
+//   {
+//     res = cuTexRefSetFormat(resized_image_texref, CU_AD_FORMAT_FLOAT, 1);
+//     MY_CUDA_CHECK(res, "cuTexRefSetFormat(resized_image_texref)");
+//   }
+// #else
+//   {
+//     res = cuTexRefSetFormat(resized_image_texref, CU_AD_FORMAT_UNSIGNED_INT32, 2);
+//     MY_CUDA_CHECK(res, "cuTexRefSetFormat(resized_image_texref)");
+//   }
+// #endif
   
   res = cuTexRefSetFormat(resized_image_size_texref, CU_AD_FORMAT_SIGNED_INT32, 1);
   MY_CUDA_CHECK(res, "cuTexRefSetFormat(resized_image_size_texref)");
   
-  res = cuTexRefSetFormat(image_idx_incrementer_texref, CU_AD_FORMAT_SIGNED_INT32, 1);
-  MY_CUDA_CHECK(res, "cuTexRefSetFormat(image_idx_incrementer_texref)");
+  // res = cuTexRefSetFormat(image_idx_incrementer_texref, CU_AD_FORMAT_SIGNED_INT32, 1);
+  // MY_CUDA_CHECK(res, "cuTexRefSetFormat(image_idx_incrementer_texref)");
   
   res = cuTexRefSetFormat(hist_ptr_incrementer_texref, CU_AD_FORMAT_UNSIGNED_INT32, 2);
   MY_CUDA_CHECK(res, "cuTexRefSetFormat(hist_ptr_incrementer_texref)");
@@ -1423,7 +1435,7 @@ FLOAT **calc_f_pyramid
 #else
       ini_thread_data_fouGPU(
                              &td[t_count], 
-                             resized_image[ii], 
+                             //                             resized_image[ii], 
                              resized_image_size + ii*3,
                              sbin2, 
                              ii,
@@ -1456,7 +1468,7 @@ FLOAT **calc_f_pyramid
 #else
       ini_thread_data_fouGPU(
                              &td[t_count], 
-                             resized_image[ii+interval], 
+                             //                             resized_image[ii+interval], 
                              resized_image_size + ii*3,
                              sbin, 
                              ii+interval,
@@ -1490,7 +1502,7 @@ FLOAT **calc_f_pyramid
 #else
           ini_thread_data_fouGPU(
                                  &td[t_count], 
-                                 resized_image[jj+interval], 
+                                 //                                 resized_image[jj+interval], 
                                  resized_image_size + (jj+interval)*3,
                                  sbin, 
                                  jj+interval,
@@ -1550,15 +1562,15 @@ FLOAT **calc_f_pyramid
   
   /* release resized image */
 //  for(int ss=0; ss<interval; ss++) s_free(resized_image[ss]);
-  free(&resized_image[0][0]);
+//  free(&resized_image[0][0]);
   //  for(int ss=interval*2; ss<LEN; ss++) s_free(resized_image[ss]);
-  s_free(resized_image);
+  //  s_free(resized_image);
   s_free(resized_image_size);
 
 #ifndef ORIGINAL
   /* release array to save pointer info */
-  res = cuMemFreeHost(image_idx_incrementer);
-  MY_CUDA_CHECK(res, "cuMemFreeHost(image_idx_incrementer)");
+  // res = cuMemFreeHost(image_idx_incrementer);
+  // MY_CUDA_CHECK(res, "cuMemFreeHost(image_idx_incrementer)");
 
   res = cuMemFreeHost(hist_ptr_incrementer);
   MY_CUDA_CHECK(res, "cuMemFreeHost(hist_ptr_incrementer)");
@@ -1570,8 +1582,8 @@ FLOAT **calc_f_pyramid
   MY_CUDA_CHECK(res, "cuMemFreeHost(feat_ptr_incrementer)");
   
   /* release GPU memory */
-  res = cuMemFree(resized_image_dev);
-  MY_CUDA_CHECK(res, "cuMemFree(resized_image_dev)");
+  // res = cuMemFree(resized_image_dev);
+  // MY_CUDA_CHECK(res, "cuMemFree(resized_image_dev)");
 
   res = cuMemFree(resized_image_size_dev);
   MY_CUDA_CHECK(res, "cuMemFree(resized_image_size_dev)");
@@ -1579,8 +1591,8 @@ FLOAT **calc_f_pyramid
   res = cuMemFree(hist_dev);
   MY_CUDA_CHECK(res, "cuMemFree(hist_dev)");
 
-  res = cuMemFree(image_idx_incrementer_dev);
-  MY_CUDA_CHECK(res, "cuMemFree(image_idx_incrementer_dev)");
+  // res = cuMemFree(image_idx_incrementer_dev);
+  // MY_CUDA_CHECK(res, "cuMemFree(image_idx_incrementer_dev)");
 
   res = cuMemFree(hist_ptr_incrementer_dev);
   MY_CUDA_CHECK(res, "cuMemFree(hist_ptr_incrementer_dev)");
@@ -1596,6 +1608,8 @@ FLOAT **calc_f_pyramid
 
   res = cuMemFree(feat_ptr_incrementer_dev);
   MY_CUDA_CHECK(res, "cuMemFree(feat_ptr_incrementer_dev)");
+
+  cleanup_about_resize();
 #endif
 
   /* release thread information */

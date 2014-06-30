@@ -24,7 +24,7 @@ CUdevice *dev;
 CUcontext *ctx;
 //CUdevice dev, dev2;
 //CUcontext ctx, ctx2;
-CUfunction *func_process_root, *func_process_part, *func_dt1d_x, *func_dt1d_y, *func_calc_a_score, *func_inverse_Q, *func_calc_hist, *func_calc_norm, *func_calc_feat;
+CUfunction *func_process_root, *func_process_part, *func_dt1d_x, *func_dt1d_y, *func_calc_a_score, *func_inverse_Q, *func_calc_hist, *func_calc_norm, *func_calc_feat, *func_resize;
 CUmodule *module;
 int *NR_MAXTHREADS_X, *NR_MAXTHREADS_Y;
 // ÉzÉXÉgÉÅÉÇÉä
@@ -105,13 +105,14 @@ void init_cuda(void)
 
   func_process_root = (CUfunction*)malloc(device_num*sizeof(CUfunction));
   func_process_part = (CUfunction*)malloc(device_num*sizeof(CUfunction));
-  func_dt1d_x = (CUfunction*)malloc(device_num*sizeof(CUfunction));
-  func_dt1d_y = (CUfunction*)malloc(device_num*sizeof(CUfunction));
+  func_dt1d_x       = (CUfunction*)malloc(device_num*sizeof(CUfunction));
+  func_dt1d_y       = (CUfunction*)malloc(device_num*sizeof(CUfunction));
   func_calc_a_score = (CUfunction*)malloc(device_num*sizeof(CUfunction));
-  func_inverse_Q = (CUfunction*)malloc(device_num*sizeof(CUfunction));
-  func_calc_hist = (CUfunction*)malloc(device_num*sizeof(CUfunction));
-  func_calc_norm = (CUfunction*)malloc(device_num*sizeof(CUfunction));
-  func_calc_feat = (CUfunction*)malloc(device_num*sizeof(CUfunction));
+  func_inverse_Q    = (CUfunction*)malloc(device_num*sizeof(CUfunction));
+  func_calc_hist    = (CUfunction*)malloc(device_num*sizeof(CUfunction));
+  func_calc_norm    = (CUfunction*)malloc(device_num*sizeof(CUfunction));
+  func_calc_feat    = (CUfunction*)malloc(device_num*sizeof(CUfunction));
+  func_resize  = (CUfunction*)malloc(device_num*sizeof(CUfunction));
 
 
 
@@ -209,6 +210,12 @@ void init_cuda(void)
     res = cuModuleGetFunction(&func_calc_feat[i], module[i], "calc_feat");
     if(res != CUDA_SUCCESS){
       printf("\ncuGetFunction(calc_feat) failed: res = %s\n", conv(res));
+      exit(1);
+    }
+
+    res = cuModuleGetFunction(&func_resize[i], module[i], "resize");
+    if(res != CUDA_SUCCESS){
+      printf("\ncuGetFunction(resize) failed: res = %s\n", conv(res));
       exit(1);
     }
 
@@ -340,6 +347,7 @@ void clean_cuda(void)
     free(func_calc_hist);
     free(func_calc_norm);
     free(func_calc_feat);
+    free(func_resize);
     free(module);
     free(dev);
     free(ctx);
