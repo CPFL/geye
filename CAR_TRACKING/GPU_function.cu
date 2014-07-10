@@ -210,7 +210,7 @@ process_root
  int L_MAX,
  int *error_array,
  int error_array_num,
- int ii,
+ // int ii,
  int level
 ) 
 {
@@ -218,6 +218,7 @@ process_root
   int idx_y = blockIdx.y * blockDim.y + threadIdx.y;
   // int ii = blockIdx.z % len;
   //  int ii = blockIdx.z;
+  int ii = threadIdx.z;
   // int level = blockIdx.z / len;
 
   int A_dims[3] = { A_dims_array[level*3], A_dims_array[level*3+1], A_dims_array[level*3+2] };
@@ -540,14 +541,15 @@ process_part
  int L_MAX,
  int *error_array,
  int error_array_num,
- int ii,
+ // int ii,
  int level
 ) 
 {
   int idx_x = blockIdx.x * blockDim.x + threadIdx.x;
   int idx_y = blockIdx.y * blockDim.y + threadIdx.y;
   // int ii = blockIdx.z % len;
-  //  int ii = blockIdx.z;
+  int ii = blockIdx.z;
+  //  int ii = threadIdx.z;
   // int level = blockIdx.z / len; 
 
   int A_dims[3] = { A_dims_array[level*3], A_dims_array[level*3+1], A_dims_array[level*3+2] };

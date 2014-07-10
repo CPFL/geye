@@ -47,7 +47,7 @@ typedef struct {
   int          calc_flag;
   CUstream     stream;
   int          max_thread_num;
-  int          ii;
+  //  int          ii;
   int          level;
 } fconvs_thread_arg;
 
@@ -65,13 +65,24 @@ void *fconvs_byGPU(void *arg)
   int         L_MAX           = this_arg->L_MAX;
   CUdeviceptr error_array_dev = this_arg->error_array_dev;
   int         error_array_num = this_arg->error_array_num;
-  int         height          = this_arg->C_dims[0];
-  int         width           = this_arg->C_dims[1];
+  // int         height          = this_arg->C_dims[0];
+  // int         width           = this_arg->C_dims[1];
   int         calc_flag       = this_arg->calc_flag;
   CUstream    stream          = this_arg->stream;
   int         max_thread_num  = this_arg->max_thread_num;
-  int         ii              = this_arg->ii;
+  //  int         ii              = this_arg->ii;
   int         level           = this_arg->level;
+
+  /* search maximum height and width in this level */
+  int max_height = 0;
+  int max_width = 0;
+  for (int jj=0; jj<len; jj++)
+    {
+      int tmp_height = this_arg[jj].C_dims[0];
+      int tmp_width  = this_arg[jj].C_dims[1];
+      max_height = (max_height < tmp_height) ? tmp_height : max_height;
+      max_width  = (max_width < tmp_width) ? tmp_width : max_width;
+    }
 
   /* assign GP kernel arguments */
   void *kernel_args[] = {
@@ -83,7 +94,7 @@ void *fconvs_byGPU(void *arg)
     (void *)&L_MAX,
     &error_array_dev,
     (void *)&error_array_num,
-    (void *)&ii,
+    //    (void *)&ii,
     (void *)&level
   };
 
@@ -93,6 +104,17 @@ void *fconvs_byGPU(void *arg)
   MY_CUDA_CHECK(res, "cuCtxSetCurrent(ctx[0])");
 
   /* define CUDA kernel shape */
+  int maxThNum_perDim;
+  switch(calc_flag) {
+  case ROOT:
+    maxThNum_perDim = sqrt(max_thread_num/len);
+    break;
+  case PART:
+    maxThNum_perDim = sqrt(max_thread_num);
+    break;
+  }
+
+#if 0
   int thread_num_x = (width < sqrt(max_thread_num)) ? width : sqrt(max_thread_num);
   int thread_num_y = (height < sqrt(max_thread_num)) ? height : sqrt(max_thread_num);
 
@@ -100,6 +122,15 @@ void *fconvs_byGPU(void *arg)
   int block_num_y = height / thread_num_y;
   if (width % thread_num_x != 0) block_num_x++;
   if (height % thread_num_y != 0) block_num_y++;
+#else
+  int thread_num_x = (max_width < maxThNum_perDim) ? max_width : maxThNum_perDim;
+  int thread_num_y = (max_height < maxThNum_perDim) ? max_height : maxThNum_perDim;
+
+  int block_num_x = max_width / thread_num_x;
+  int block_num_y = max_height / thread_num_y;
+  if (max_width % thread_num_x != 0) block_num_x++;
+  if (max_height % thread_num_y != 0) block_num_y++;
+#endif
 
   int sharedMemBytes = 0;
 
@@ -114,7 +145,8 @@ void *fconvs_byGPU(void *arg)
                          //                         len,            // gridDimZ
                          thread_num_x,         // blockDimX
                          thread_num_y,         // blockDimY
-                         1,                    // blockDimZ
+                         //                         1,                    // blockDimZ
+                         len,                    // blockDimZ
                          sharedMemBytes,       // sharedMemBytes
                          stream,               // hStream
                          kernel_args,          // kernelParams
@@ -128,11 +160,12 @@ void *fconvs_byGPU(void *arg)
                          func_process_part[0], // call function
                          block_num_x,          // gridDimX
                          block_num_y,          // gridDimY
-                                                  1,                    // gridDimZ
-                         //                         len,            // gridDimZ
+                         //                         1,                    // gridDimZ
+                         len,            // gridDimZ
                          thread_num_x,         // blockDimX
                          thread_num_y,         // blockDimY
                          1,                    // blockDimZ
+                         //                         len,                    // blockDimZ
                          sharedMemBytes,       // sharedMemBytes
                          stream,               // hStream
                          kernel_args,          // kernelParams
@@ -330,7 +363,7 @@ FLOAT ***fconvsMT_GPU
 
       switch(calc_flag){
       case ROOT:
-        printf("td[%d][%d] height, width = (%d, %d)\n", level, jj, height, width);
+        //        printf("td[%d][%d] height, width = (%d, %d)\n", level, jj, height, width);
         td[level][jj].C_dims[0]=height; 
         td[level][jj].C_dims[1]=width;
         
@@ -341,7 +374,7 @@ FLOAT ***fconvsMT_GPU
         break;
         
       case PART:      
-        printf("td[%d][%d] height, width = (%d, %d)\n", L, jj, height, width);
+        //        printf("td[%d][%d] height, width = (%d, %d)\n", L, jj, height, width);
         td[L][jj].C_dims[0]=height; 
         td[L][jj].C_dims[1]=width;
 
@@ -357,7 +390,7 @@ FLOAT ***fconvsMT_GPU
         break;
       }
     }
-    printf("===================\n");
+    //    printf("===================\n");
   }
   
   
@@ -703,13 +736,14 @@ FLOAT ***fconvsMT_GPU
       continue;
     }
     /**************************************************************************/
-    for (int jj=0; jj<len; jj++) {
+    //    for (int jj=0; jj<len; jj++) {
   
       /* assign values to thread argument structure 
          and create GP kernel Launcher thread
       */    
       switch(calc_flag) {
       case ROOT:
+#if 0
         td[level][jj].C_dev           = root_C_dev;
         td[level][jj].A_dims_dev      = A_SIZE_dev;
         td[level][jj].B_dims_dev      = B_dims_dev;
@@ -724,10 +758,28 @@ FLOAT ***fconvsMT_GPU
         td[level][jj].level           = level;
         res = cuStreamCreate(&(td[level][jj].stream), CU_STREAM_DEFAULT);
         MY_CUDA_CHECK(res, "cuStreamCreate(td[level][jj].stream)");
-        pthread_create(&th_handler[level][jj], NULL, fconvs_byGPU, (void *)&td[level][jj]);
+        ptohread_create(&th_handler[level][jj], NULL, fconvs_byGPU, (void *)&td[level][jj]);
+#else
+        td[level][0].C_dev           = root_C_dev;
+        td[level][0].A_dims_dev      = A_SIZE_dev;
+        td[level][0].B_dims_dev      = B_dims_dev;
+        td[level][0].len             = len;
+        td[level][0].interval        = interval;
+        td[level][0].L_MAX           = L_MAX;
+        td[level][0].error_array_dev = root_error_array_dev;
+        td[level][0].error_array_num = error_array_num;
+        td[level][0].calc_flag       = calc_flag;
+        td[level][0].max_thread_num  = max_thread_num;
+        //        td[level][0].ii              = jj;
+        td[level][0].level           = level;
+        res = cuStreamCreate(&(td[level][0].stream), CU_STREAM_DEFAULT);
+        MY_CUDA_CHECK(res, "cuStreamCreate(td[level][0].stream)");
+        pthread_create(&th_handler[level][0], NULL, fconvs_byGPU, (void *)&td[level][0]);
+#endif
         break;
         
       case PART:
+#if 0
         td[L][jj].C_dev           = part_C_dev;
         td[L][jj].A_dims_dev      = A_SIZE_dev;
         td[L][jj].B_dims_dev      = B_dims_dev;
@@ -743,9 +795,26 @@ FLOAT ***fconvsMT_GPU
         res = cuStreamCreate(&(td[L][jj].stream), CU_STREAM_DEFAULT);
         MY_CUDA_CHECK(res, "cuStreamCreate(td[L][jj].stream)");
         pthread_create(&th_handler[L][jj], NULL, fconvs_byGPU, (void *)&td[L][jj]);
+#else
+        td[L][0].C_dev           = part_C_dev;
+        td[L][0].A_dims_dev      = A_SIZE_dev;
+        td[L][0].B_dims_dev      = B_dims_dev;
+        td[L][0].len             = len;
+        td[L][0].interval        = interval;
+        td[L][0].L_MAX           = L_MAX;
+        td[L][0].error_array_dev = part_error_array_dev;
+        td[L][0].error_array_num = error_array_num;
+        td[L][0].calc_flag       = calc_flag;
+        td[L][0].max_thread_num  = max_thread_num;
+        //        td[L][0].ii              = jj;
+        td[L][0].level           = L;
+        res = cuStreamCreate(&(td[L][0].stream), CU_STREAM_DEFAULT);
+        MY_CUDA_CHECK(res, "cuStreamCreate(td[L][0].stream)");
+        pthread_create(&th_handler[L][0], NULL, fconvs_byGPU, (void *)&td[L][0]);
+#endif
         break;
       }
-    }
+      //  }
   }
   
   
@@ -762,9 +831,10 @@ FLOAT ***fconvsMT_GPU
       continue;
     }
     /**************************************************************************/
-    for (int jj=0; jj<len; jj++) {
+    //    for (int jj=0; jj<len; jj++) {
       switch(calc_flag) {
       case ROOT:
+#if 0
         res = cuStreamSynchronize(td[level][jj].stream);
         MY_CUDA_CHECK(res, "cuStreamSynchronize(td[level][jj].stream)");
 
@@ -772,9 +842,19 @@ FLOAT ***fconvsMT_GPU
 
         res = cuStreamDestroy(td[level][jj].stream);
         MY_CUDA_CHECK(res, "cuStreamDestroy(td[level][jj].stream)");
+#else
+        res = cuStreamSynchronize(td[level][0].stream);
+        MY_CUDA_CHECK(res, "cuStreamSynchronize(td[level][0].stream)");
+
+        pthread_join(th_handler[level][0], NULL);
+
+        res = cuStreamDestroy(td[level][0].stream);
+        MY_CUDA_CHECK(res, "cuStreamDestroy(td[level][0].stream)");
+#endif
         break;
 
       case PART:
+#if 0
         res = cuStreamSynchronize(td[L][jj].stream);
         MY_CUDA_CHECK(res, "cuStreamSynchronize(td[L][jj].stream)");
 
@@ -782,9 +862,18 @@ FLOAT ***fconvsMT_GPU
 
         res = cuStreamDestroy(td[L][jj].stream);
         MY_CUDA_CHECK(res, "cuStreamDestroy(td[L][jj].stream)");
+#else
+        res = cuStreamSynchronize(td[L][0].stream);
+        MY_CUDA_CHECK(res, "cuStreamSynchronize(td[L][0].stream)");
+
+        pthread_join(th_handler[L][0], NULL);
+
+        res = cuStreamDestroy(td[L][0].stream);
+        MY_CUDA_CHECK(res, "cuStreamDestroy(td[L][0].stream)");
+#endif
         break;
       }
-    }
+      //    }
   }
 
 
