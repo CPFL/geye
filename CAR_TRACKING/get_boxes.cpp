@@ -18,6 +18,7 @@
 
 #include "for_use_GPU.h"
 #include "switch_float.h"
+#include "drvapi_error_string.h"
 
 CUdeviceptr *pm_size_array_dev;
 CUdeviceptr *PIDX_array_dev;
@@ -787,14 +788,27 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
     }  //for (level)  // feature's loop(A's loop) 1level 1picture
 
 
+  /* upload feature to GPU*/
+  CUdeviceptr featp2_dev;
+  res = cuMemAlloc(&featp2_dev, SUM_SIZE_feat);
+  if (res != CUDA_SUCCESS) {
+    printf("cuMemAlloc(featp2_dev) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+    exit(1);
+  }
+
+  res = cuMemcpyHtoD(featp2_dev, &featp2[0][0], SUM_SIZE_feat);
+  if (res != CUDA_SUCCESS) {
+    printf("cuMemcpyHtoD(featp2) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+    exit(1);
+  }
 
 
   ///////root calculation/////////
   /* calculate model score (only root) */
   gettimeofday(&tv_root_score_start, NULL);
   rootmatch = fconvsMT_GPU(
-                           featp2,
-                           SUM_SIZE_feat, 
+                           featp2_dev,
+                           SUM_SIZE_feat,
                            rootfilter, 
                            rootsym, 
                            1, 
@@ -822,7 +836,7 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
       /* calculate model score (only part) */
       gettimeofday(&tv_part_score_start, NULL);
       partmatch = fconvsMT_GPU(
-                               featp2,
+                               featp2_dev,
                                SUM_SIZE_feat,
                                partfilter, 
                                part_sym, 
@@ -852,6 +866,13 @@ FLOAT *get_boxes(FLOAT **features,FLOAT *scales,int *FSIZE,MODEL *MO,int *Dnum,F
     printf("cuCtxSetCurrent(ctx[0]) failed: res = %s\n", conv(res));
     exit(1);
   }
+
+  res  = cuMemFree(featp2_dev);
+  if (res != CUDA_SUCCESS) {
+    printf("cuMemFree(featp2_dev) failed: res = %d\n->%s\n", res, getCudaDrvErrorString(res));
+    exit(1);
+  }
+
 
   gettimeofday(&tv_make_c_end, NULL);
 
