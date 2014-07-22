@@ -205,6 +205,105 @@ void getTexRef(CUdeviceptr dev_ptr, const char* texName, CUtexref *texref_ptr, s
 #endif
 } /* void getTexRef() */
 
+
+/*******************************************************/
+/* sub function to create Look-Up Table 
+   to adjust pointer position in GPU */
+void make_idxAdjust_LUT
+(
+ int *feat_size, 
+ int *model_size,
+ int feat_num, 
+ int model_num,
+ CUdeviceptr feat_idx_LUT_dev,
+ CUdeviceptr model_idx_LUT_dev
+ )
+{
+  CUresult res;
+  int *feat_idx_LUT, *model_idx_LUT;
+
+  /* allocate CPU memory region for LUT */
+  res = cuMemHostAlloc((void **)&feat_idx_LUT, feat_num*sizeof(int), CU_MEMHOSTALLOC_PORTABLE);
+  MY_CUDA_CHECK(res, "cuMemHostAlloc(feat_idx_LUT)");
+
+  res = cuMemHostAlloc((void **)&model_idx_LUT, model_num*sizeof(int), CU_MEMHOSTALLOC_PORTABLE);
+  MY_CUDA_CHECK(res, "cuMemHostAlloc(model_idx_LUT)");
+
+  /* calculate pointer position for each level feature */
+  int tmp_sum_size = 0;
+  for (int level=0; level<feat_num; level++)
+    {
+      int height = feat_size[level*3];
+      int width  = feat_size[level*3 + 1];
+      int depth  = feat_size[level*3 + 2];
+
+      feat_idx_LUT[level] = tmp_sum_size;
+      tmp_sum_size += height * width * depth;
+    }
+
+  /* calculate pointer position for each model */
+  tmp_sum_size = 0;
+  for (int ii=0; ii<model_num; ii++)
+    {
+      int height = model_size[ii*3];
+      int width  = model_size[ii*3 + 1];
+      int depth  = model_size[ii*3 + 2];
+
+      model_idx_LUT[ii] = tmp_sum_size;
+      tmp_sum_size += height * width * depth;
+    }
+
+  /* allocate GPU memory region for LUT */
+  res = cuMemAlloc(&feat_idx_LUT_dev, feat_num*sizeof(int));
+  MY_CUDA_CHECK(res, "cuMemAlloc(feat_idx_LUT_dev)");
+
+  res = cuMemAlloc(&model_idx_LUT_dev, model_num*sizeof(int));
+  MY_CUDA_CHECK(res, "cuMemAlloc(model_idx_LUT_dev)");
+
+  /* upload data to GPU */
+  res = cuMemcpyHtoD(feat_idx_LUT_dev, feat_idx_LUT, feat_num*sizeof(int));
+  MY_CUDA_CHECK(res, "cuMemcpyHtoD(feat_idx_LUT)");
+
+  res = cuMemcpyHtoD(model_idx_LUT_dev, model_idx_LUT, model_num*sizeof(int));
+  MY_CUDA_CHECK(res, "cuMemcpyHtoD(model_idx_LUT)");
+
+  /* get handle to texture memory on GPU */
+  CUtexref feat_idx_LUT_texref, model_idx_LUT_texref;
+  res = cuModuleGetTexRef(&feat_idx_LUT_texref, module[0], "A_ptr_incrementer");
+  MY_CUDA_CHECK(res, "cuModuleGetTexRef(feat_idx_LUT_texref)");
+
+  res = cuModuleGetTexRef(&model_idx_LUT_texref, module[0], "B_ptr_incrementer");
+  MY_CUDA_CHECK(res, "cuModuleGetTexRef(model_idx_LUT_texref)");
+
+  /* bind to texture memory on GPU */
+  res = cuTexRefSetAddress(NULL, feat_idx_LUT_texref, feat_idx_LUT_dev, feat_num*sizeof(int));
+  MY_CUDA_CHECK(res, "cuTexRefSetAddress(feat_idx_LUT)");
+
+  res = cuTexRefSetAddress(NULL, model_idx_LUT_texref, model_idx_LUT_dev, model_num*sizeof(int));
+  MY_CUDA_CHECK(res, "cuTexRefSetAddress(model_idx_LUT)");
+
+  /* configure texture memory */
+  res = cuTexRefSetFlags(feat_idx_LUT_texref, CU_TRSF_READ_AS_INTEGER);
+  MY_CUDA_CHECK(res, "cuTesRefSetFlags(feat_idx_LUT_texref)");
+
+  res = cuTexRefSetFlags(model_idx_LUT_texref, CU_TRSF_READ_AS_INTEGER);
+  MY_CUDA_CHECK(res, "cuTesRefSetFlags(model_idx_LUT_texref)");
+
+  res = cuTexRefSetFormat(feat_idx_LUT_texref, CU_AD_FORMAT_UNSIGNED_INT32, 1);
+  MY_CUDA_CHECK(res, "cuTexRexSetFormat(feat_idx_LUT_texref)");
+
+  res = cuTexRefSetFormat(model_idx_LUT_texref, CU_AD_FORMAT_UNSIGNED_INT32, 1);
+  MY_CUDA_CHECK(res, "cuTexRexSetFormat(model_idx_LUT_texref)");
+
+  /* free CPU memory region */
+  res = cuMemFreeHost(feat_idx_LUT);
+  MY_CUDA_CHECK(res, "cuMemFreeHost(feat_idx_LUT)");
+
+  res = cuMemFreeHost(model_idx_LUT);
+  MY_CUDA_CHECK(res, "cuMemFreeHost(model_idx_LUT)");
+
+} /* void make_idxAdjust_LUT() */
+
 /*******************************************************/
 FLOAT ***fconvsMT_GPU
 (
@@ -311,7 +410,7 @@ FLOAT ***fconvsMT_GPU
       B_dimension[ii*3] = B_SIZE[ii][0];
       B_dimension[ii*3 + 1] = B_SIZE[ii][1];
       B_dimension[ii*3 + 2] = 31;
-           
+  
       SUM_SIZE_B += B_dimension[ii*3]*B_dimension[ii*3 + 1]*B_dimension[ii*3 + 2]*sizeof(FLOAT);
     }  //for(len)
   
@@ -637,7 +736,7 @@ FLOAT ***fconvsMT_GPU
   }
 
 
-  /* get texture reference for feature */
+  /* get texture reference for feature and model */
   CUtexref featp2_texref, B_texref;
 #ifdef USE_FLOAT_AS_DECIMAL
   getTexRef(featp2_dev, "A", &featp2_texref, SUM_SIZE_feat);
@@ -646,6 +745,10 @@ FLOAT ***fconvsMT_GPU
   getTexRef(featp2_dev, "A_double", featp2_texref, SUM_SIZE_feat);
   getTexRef(B_dev, "B_double", &B_texref, SUM_SIZE_B);
 #endif
+
+  /* create Look-Up Table to adjust pointer position in GPU kernel */
+  CUdeviceptr A_LUT_dev, B_LUT_dev;
+  make_idxAdjust_LUT(A_SIZE, B_dimension, L_MAX, len, A_LUT_dev, B_LUT_dev);
 
   gettimeofday(&tv_memcpy_start, NULL);
   res = cuMemcpyHtoD(B_dims_dev, B_dimension, 3*len*sizeof(int));
@@ -974,7 +1077,11 @@ FLOAT ***fconvsMT_GPU
     break;
   }
   
+  res = cuMemFree(A_LUT_dev);
+  MY_CUDA_CHECK(res, "cuMemFree(A_LUT_dev)");
 
+  res = cuMemFree(B_LUT_dev);
+  MY_CUDA_CHECK(res, "cuMemFree(B_LUT_dev)");
 
 
   

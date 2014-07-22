@@ -11,7 +11,8 @@ texture<float, cudaTextureType1D, cudaReadModeElementType> A;
 texture<float, cudaTextureType1D, cudaReadModeElementType> B;
 texture<int2, cudaTextureType1D, cudaReadModeElementType> A_double;
 texture<int2, cudaTextureType1D, cudaReadModeElementType> B_double;
-
+texture<uint, cudaTextureType1D, cudaReadModeElementType> A_ptr_incrementer;
+texture<uint, cudaTextureType1D, cudaReadModeElementType> B_ptr_incrementer;
 
 //thread process
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -279,21 +280,23 @@ process_root
     dst = (FLOAT *)pointer;
     
     /* adjust the location of pointer of A */
-    //    unsigned long long int pointerA = (unsigned long long int)A;
-    int A_index_ini = 0;
-    for(int a=0; a<level; a++) {
-      //      pointerA += (unsigned long long int)(A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2]*sizeof(FLOAT));
-      A_index_ini += A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2];
-    }
+    // //    unsigned long long int pointerA = (unsigned long long int)A;
+    // int A_index_ini = 0;
+    // for(int a=0; a<level; a++) {
+    //   //      pointerA += (unsigned long long int)(A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2]*sizeof(FLOAT));
+    //   A_index_ini += A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2];
+    // }
+    int A_index_ini = tex1Dfetch(A_ptr_incrementer, level);
     
     
     /* adjust the location of pointer of B */
     //    unsigned long long int pointerB = (unsigned long long int)B;
-    int B_index_ini = 0;
-    for(int b=0; b<ii; b++) {
-      //      pointerB += (unsigned long long int)(B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2]*sizeof(FLOAT));
-      B_index_ini += B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2];
-    } 
+    // int B_index_ini = 0;
+    // for(int b=0; b<ii; b++) {
+    //   //      pointerB += (unsigned long long int)(B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2]*sizeof(FLOAT));
+    //   B_index_ini += B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2];
+    // } 
+    int B_index_ini = tex1Dfetch(B_ptr_incrementer, ii);
 
             
     for(int f = 0; f < num_features; f++) // num_features = 31
@@ -603,25 +606,26 @@ process_part
 
       pointer += (unsigned long long int)(height*width*sizeof(FLOAT));
     }
-    
 
     dst = (FLOAT *)pointer;
 
     /* adjust the location of pointer of A */
-    //    unsigned long long int pointerA = (unsigned long long int)A;
-    int A_index_ini = 0;
-    for(int a=0; a<level; a++) {
-      //      pointerA += (unsigned long long int)(A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2]*sizeof(FLOAT));
-      A_index_ini += A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2];
-    }
+    // //    unsigned long long int pointerA = (unsigned long long int)A;
+    // int A_index_ini = 0;
+    // for(int a=0; a<level; a++) {
+    //   //      pointerA += (unsigned long long int)(A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2]*sizeof(FLOAT));
+    //   A_index_ini += A_dims_array[a*3]*A_dims_array[a*3 + 1]*A_dims_array[a*3 + 2];
+    // }
+    int A_index_ini = tex1Dfetch(A_ptr_incrementer, level);
     
     /* adjust the location of pointer of B */
-    //    unsigned long long int pointerB = (unsigned long long int)B;
-    int B_index_ini = 0;
-    for(int b=0; b<ii; b++) {
-      //      pointerB += (unsigned long long int)(B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2]*sizeof(FLOAT));
-      B_index_ini += B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2];
-    } 
+    // //    unsigned long long int pointerB = (unsigned long long int)B;
+    // int B_index_ini = 0;
+    // for(int b=0; b<ii; b++) {
+    //   //      pointerB += (unsigned long long int)(B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2]*sizeof(FLOAT));
+    //   B_index_ini += B_dims_array[b*3]*B_dims_array[b*3 + 1]*B_dims_array[b*3 + 2];
+    // } 
+    int B_index_ini = tex1Dfetch(B_ptr_incrementer, ii);
     
     for(int f = 0; f < num_features; f++) // num_features = 31
       {  
