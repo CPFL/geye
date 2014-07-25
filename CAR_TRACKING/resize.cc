@@ -134,6 +134,7 @@ void resize1dtran(FLOAT *src, int sheight, FLOAT *dst, int dheight, int width, i
 
 FLOAT *resize(FLOAT *src,int *sdims,int *odims,FLOAT scale)
 {
+
   FLOAT *dst;
   if(scale==1.0)
     {
