@@ -217,8 +217,8 @@ void make_idxAdjust_LUT
  int *model_size,
  int feat_num, 
  int model_num,
- CUdeviceptr feat_idx_LUT_dev,
- CUdeviceptr model_idx_LUT_dev
+ CUdeviceptr *feat_idx_LUT_dev,
+ CUdeviceptr *model_idx_LUT_dev
  )
 {
   CUresult res;
@@ -256,17 +256,17 @@ void make_idxAdjust_LUT
     }
 
   /* allocate GPU memory region for LUT */
-  res = cuMemAlloc(&feat_idx_LUT_dev, feat_num*sizeof(int));
+  res = cuMemAlloc(feat_idx_LUT_dev, feat_num*sizeof(int));
   MY_CUDA_CHECK(res, "cuMemAlloc(feat_idx_LUT_dev)");
 
-  res = cuMemAlloc(&model_idx_LUT_dev, model_num*sizeof(int));
+  res = cuMemAlloc(model_idx_LUT_dev, model_num*sizeof(int));
   MY_CUDA_CHECK(res, "cuMemAlloc(model_idx_LUT_dev)");
 
   /* upload data to GPU */
-  res = cuMemcpyHtoD(feat_idx_LUT_dev, feat_idx_LUT, feat_num*sizeof(int));
+  res = cuMemcpyHtoD(*feat_idx_LUT_dev, feat_idx_LUT, feat_num*sizeof(int));
   MY_CUDA_CHECK(res, "cuMemcpyHtoD(feat_idx_LUT)");
 
-  res = cuMemcpyHtoD(model_idx_LUT_dev, model_idx_LUT, model_num*sizeof(int));
+  res = cuMemcpyHtoD(*model_idx_LUT_dev, model_idx_LUT, model_num*sizeof(int));
   MY_CUDA_CHECK(res, "cuMemcpyHtoD(model_idx_LUT)");
 
   /* get handle to texture memory on GPU */
@@ -278,10 +278,10 @@ void make_idxAdjust_LUT
   MY_CUDA_CHECK(res, "cuModuleGetTexRef(model_idx_LUT_texref)");
 
   /* bind to texture memory on GPU */
-  res = cuTexRefSetAddress(NULL, feat_idx_LUT_texref, feat_idx_LUT_dev, feat_num*sizeof(int));
+  res = cuTexRefSetAddress(NULL, feat_idx_LUT_texref, *feat_idx_LUT_dev, feat_num*sizeof(int));
   MY_CUDA_CHECK(res, "cuTexRefSetAddress(feat_idx_LUT)");
 
-  res = cuTexRefSetAddress(NULL, model_idx_LUT_texref, model_idx_LUT_dev, model_num*sizeof(int));
+  res = cuTexRefSetAddress(NULL, model_idx_LUT_texref, *model_idx_LUT_dev, model_num*sizeof(int));
   MY_CUDA_CHECK(res, "cuTexRefSetAddress(model_idx_LUT)");
 
   /* configure texture memory */
@@ -750,7 +750,7 @@ FLOAT ***fconvsMT_GPU
 
   /* create Look-Up Table to adjust pointer position in GPU kernel */
   CUdeviceptr A_LUT_dev, B_LUT_dev;
-  make_idxAdjust_LUT(A_SIZE, B_dimension, L_MAX, len, A_LUT_dev, B_LUT_dev);
+  make_idxAdjust_LUT(A_SIZE, B_dimension, L_MAX, len, &A_LUT_dev, &B_LUT_dev);
 
   gettimeofday(&tv_memcpy_start, NULL);
   res = cuMemcpyHtoD(B_dims_dev, B_dimension, 3*len*sizeof(int));
