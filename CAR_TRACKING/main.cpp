@@ -8,27 +8,27 @@
 
 
 //OpenCV library
-//#include "cv.h"			
+//#include "cv.h"
 //#include "cxcore.h"
-//#include "highgui.h"	
+//#include "highgui.h"
 #include "cv.h"
 #include "highgui.h"
 #include "cxcore.h"
 #ifdef _DEBUG
     //DebugÉÇÅ[ÉhÇÃèÍçá
-    #pragma comment(lib,"cv200d.lib") 
-    #pragma comment(lib,"cxcore200d.lib") 
-    #pragma comment(lib,"cvaux200d.lib") 
-    #pragma comment(lib,"highgui200d.lib") 
+    #pragma comment(lib,"cv200d.lib")
+    #pragma comment(lib,"cxcore200d.lib")
+    #pragma comment(lib,"cvaux200d.lib")
+    #pragma comment(lib,"highgui200d.lib")
 #else
     //ReleaseÉÇÅ[ÉhÇÃèÍçá
-    #pragma comment(lib,"cv200.lib") 
-    #pragma comment(lib,"cxcore200.lib") 
-    #pragma comment(lib,"cvaux200.lib") 
-    #pragma comment(lib,"highgui200.lib") 
+    #pragma comment(lib,"cv200.lib")
+    #pragma comment(lib,"cxcore200.lib")
+    #pragma comment(lib,"cvaux200.lib")
+    #pragma comment(lib,"highgui200.lib")
 #endif
 //C++ library
-#include <stdio.h>		
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -53,12 +53,12 @@ int main(void);	//main function (Object detection)
 
 /////////////////////////////////////////
 //data name
-char ldata_name[]="2010_2_3.txt";		//laser data name 
+char ldata_name[]="2010_2_3.txt";		//laser data name
 char mov_name[] = "out.avi";		//movie name
 
 /////////////////////////////////////////
 //window name
-char WIN_A[]="CAR_TRACKING";		//laser data name 
+char WIN_A[]="CAR_TRACKING";		//laser data name
 char WIN_B[]="2D-mapping";			//movie name
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -79,15 +79,15 @@ int main(void)
   CvCapture *capt;            //movie file capture
   fpos_t curpos,fsize;        //file size
   int ss=0;                   //image number
-  int fnum=0;                 //frame number 
+  int fnum=0;                 //frame number
   bool FLAG = true;           //file end flag
-  
+
   //parameters
   FLOAT thresh = -0.5; //threshold score of detection (default :0.0)
   FLOAT overlap = 0.4; //threshold overlap parameter (default :0.4)
   FLOAT ratio = 1;     //resize ratio
   int TH_length = 80;  //tracking length threshold
-  
+
   /* for measurement */
   struct timeval tv;
   struct timeval tv_1process_start, tv_1process_end;
@@ -98,59 +98,59 @@ int main(void)
 
   /* Output file for detect result */
   resFP = fopen("detect_result.dat", "w");
-  
+
 #define TIME_MEASURE
 #ifdef TIME_MEASURE
   double time_mearure;
   time_mearure = (double)cv::getTickCount();
 #endif
-  
+
 #ifndef ORIGINAL
   /* initialization GPU */
   init_cuda();
 #endif
-  
+
   //get laser_save data pass (file should be in savedata folder)
-  char *FPASS= get_file_pass(ldata_name);	
-  
+  char *FPASS= get_file_pass(ldata_name);
+
   int i;
   printf("FPASS:");
   for (i=0;*(FPASS+i) != '\0';i++){
     printf("%c",*(FPASS+i));
   }
   printf("\n");
-  
-  //open save file 
+
+  //open save file
   if ((fp = fopen(FPASS,"rb")) == NULL) { printf("file open error!!\n"); exit(EXIT_FAILURE);}
-  
+
   //get car-detector model
   MODEL *MO=load_model(ratio);
-  
+
   //create lesult information
   RESULT *LR = create_result(0);
-  
+
   //Particle filter information
   PINFO P_I = {0};
-  
+
   //get file size and current file position
   get_f_size(fp,&curpos,&fsize);
-  
+
   //open image-window(OpenCV)
   cvNamedWindow(WIN_A,CV_WINDOW_AUTOSIZE);	//for scan point mapping on image
   //cvNamedWindow(WIN_B,CV_WINDOW_AUTOSIZE);		//for scan point 2D mapping
-  
+
   //get movie-file pass
-  //char *MPASS= get_file_pass(mov_name);	
-  ////load movie file 
+  //char *MPASS= get_file_pass(mov_name);
+  ////load movie file
   //printf("%s\n",MPASS);
   //if((capt=cvCaptureFromAVI(MPASS))==NULL){printf("movie open error!!\n"); exit(EXIT_FAILURE);}
-  
+
   ////data skip
   //skip_data(fp,capt,1200,&fnum);
   skip_data_2(fp,1,&ss);   //Ç†ÇÈà íuÇ©ÇÁÇÃâÊëúÇå©ÇÈ(ç°ÇÕ50ñáñ⁄Ç©ÇÁÇ›ÇƒÇ¢ÇÈÅB)
-  
-  
-  
+
+
+
   //load laser and movie data
   //for(int im=ss;im<2000;im++)
   for(int im=1;im<=11;im++)
@@ -161,24 +161,24 @@ int main(void)
       time_memcpy = 0;
       time_kernel = 0;
 
-      //IplImage *IMG;	//inputed-image 
-      ////load movie 
+      //IplImage *IMG;	//inputed-image
+      ////load movie
       //if((IMG=cvQueryFrame(capt))==NULL){printf("end of movie\n");break;}
-      
+
       ////create and resize 640x480 Image (for detection and tracking)
       //IplImage *IM_D=ipl_cre_resize(IMG,640,480);
-      
+
       // load image
       IplImage *IM_D=load_suc_image(im);
-      
-      
-      //printf("â°í∑Ç≥%d\n",3 * IM_D -> width);    
+
+
+      //printf("â°í∑Ç≥%d\n",3 * IM_D -> width);
       //printf("âÊëf%d\n",(int)(unsigned char)IM_D -> imageData[0]);
       //printf("âÊëf%d\n",(int)(unsigned char)IM_D -> imageData[2*IM_D->widthStep]);
       //printf("âÊëf%d\n",(int)(unsigned char)IM_D -> imageData[1920]);
-      
+
       //for(int k=0;k<24;k++){printf("âÊëf%d\n",(int)(unsigned char)IM_D -> imageData[k]);}
-      
+
       ///**HOG(é©çÏ)*/
       //FLOAT **h;
       /////**h = new int[1000];*/
@@ -188,7 +188,7 @@ int main(void)
       //int a=0;
       //for(int i=0;i<64;i+=0)
       //{
-      //	for(int k=0;k<24;k+=3)	
+      //	for(int k=0;k<24;k+=3)
       //	{
       //		*(h[0]+i) = (int)(unsigned char)IM_D -> imageData[k+a*IM_D->widthStep];
       //		//printf("h;%d\n",*(h[0]+i));
@@ -246,7 +246,7 @@ int main(void)
       ///////////Car-Detection//////////////
       //////////////////////////////////////
 
-      int D_NUMS=0;           //# of detected-object		
+      int D_NUMS=0;           //# of detected-object
 
       //IplImage *R_I = ipl_resize(IM_D,ratio);   //trime image for detection
       IplImage *R_I = IM_D;
@@ -258,7 +258,7 @@ int main(void)
       gettimeofday(&tv_car_detection_end, NULL);
 
 
-      //finalization(CUR,LR,&P_I,A_SCORE,R_I,TH_length);					//calculate tracking information		
+      //finalization(CUR,LR,&P_I,A_SCORE,R_I,TH_length);					//calculate tracking information
 
       //////////////////////////////////////
       //////////laser-radar fusion//////////
@@ -266,7 +266,7 @@ int main(void)
 
       ////get scan-point data
       //SCANDATA *Sdata=get_s_data(fp,IM_D,&curpos);
-      //radar_data_fusion(Sdata,IM_D,CUR,&P_I); //draw scan point on image 
+      //radar_data_fusion(Sdata,IM_D,CUR,&P_I); //draw scan point on image
 
       //////////////////////////////////////
       /////////////visualization////////////
@@ -281,7 +281,7 @@ int main(void)
       cvShowImage(WIN_A,IM_D);											//show image (RESULT & scan-point)
       //cvShowImage(WIN_B,TDMAP);											//show 2D scan-point MAP
 
-      //update result 
+      //update result
       //update_result(LR,CUR);												//update_result
 
       //save result
@@ -316,11 +316,11 @@ int main(void)
       //      if(IN_KEY==0x1b) break;
       //      if(IN_KEY==1048603) // if 'Esc' key is typed
       if(IN_KEY=='\x1b') // if 'Esc' key is typed
-        break;  
+        break;
       // else
       //   sleep(3);
 #endif
-        
+
       //release data
       //Release_sdata(Sdata);						//release scan point data
       cvReleaseImage(&R_I);						//release resized image
@@ -335,15 +335,15 @@ int main(void)
   //cvDestroyWindow(WIN_B);	//destroy window
 
   //release car-detector-model
-  free_model(MO);						
+  free_model(MO);
 
   //release detection result
-  release_result(LR);					
+  release_result(LR);
 
   //close and release file information
-  fclose(fp);			//close laser_file 
+  fclose(fp);			//close laser_file
   //cvReleaseCapture(&capt);
-    
+
   s_free(FPASS);		//release laser_file pass
   //s_free(MPASS);		//release movie file pass
 

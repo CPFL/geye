@@ -7,7 +7,7 @@
 /////showboxes.cpp   show object_rectangle_box (write to IplImage) ////////////////////////////////////////////////
 
 //OpenCV library
-//#include "cv.h"			
+//#include "cv.h"
 //#include "cxcore.h"
 //#include "highgui.h"
 #include "cv.h"
@@ -15,16 +15,16 @@
 #include "cxcore.h"
 #ifdef _DEBUG
     //Debugモードの場合
-    #pragma comment(lib,"cv200d.lib") 
-    #pragma comment(lib,"cxcore200d.lib") 
-    #pragma comment(lib,"cvaux200d.lib") 
-    #pragma comment(lib,"highgui200d.lib") 
+    #pragma comment(lib,"cv200d.lib")
+    #pragma comment(lib,"cxcore200d.lib")
+    #pragma comment(lib,"cvaux200d.lib")
+    #pragma comment(lib,"highgui200d.lib")
 #else
     //Releaseモードの場合
-    #pragma comment(lib,"cv200.lib") 
-    #pragma comment(lib,"cxcore200.lib") 
-    #pragma comment(lib,"cvaux200.lib") 
-    #pragma comment(lib,"highgui200.lib") 
+    #pragma comment(lib,"cv200.lib")
+    #pragma comment(lib,"cxcore200.lib")
+    #pragma comment(lib,"cvaux200.lib")
+    #pragma comment(lib,"highgui200.lib")
 #endif
 //C++ library
 #include <stdio.h>
@@ -55,7 +55,7 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 void show_vector(IplImage *Image,IplImage *TMAP,RESULT *CUR,PINFO *P_I,FLOAT ratio);	//show vector of velocity
 void show_likelihood(IplImage *Image,CvMat *LIKE,int *COORD);							//show likelihood (for debug)
 void show_det_score(IplImage *Image,FLOAT *ac_score,RESULT *CUR);						//show detector accumulated score (debug)
-void print_information(void);															//print basic information of detection		
+void print_information(void);															//print basic information of detection
 void save_result(IplImage *Image,int fnum);												//save result image
 void ovw_det_result(IplImage *OR,IplImage *DE, FLOAT ratio);							//over-write detection result
 IplImage *load_suc_image(int fnum);														//load successive images (jpeg data)
@@ -71,13 +71,13 @@ CvScalar get_color(int coltype)
 	CvScalar COL;
 	switch(coltype%3)
 	{
-		case 0: 
+		case 0:
 			COL = cvScalar(255.0,255.0,0.0);
 			break;
-		case 1:	
+		case 1:
 			COL = cvScalar(255.0,0.0,0.0);
 			break;
-		case 2: 
+		case 2:
 			COL = cvScalar(255.0,255.0,0.0);
 			break;
 	}
@@ -89,8 +89,8 @@ CvScalar get_color(int coltype)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //show rectangle boxes(with object_tracking result)
 void show_rects(IplImage *Image,RESULT *CUR,FLOAT ratio)
-{		
-	//parameters 
+{
+	//parameters
 	const int height = Image->height;
 	const int width = Image->width;
 	const int UpY = 0;
@@ -101,7 +101,7 @@ void show_rects(IplImage *Image,RESULT *CUR,FLOAT ratio)
 		//int *P = CUR->point+4*ii;
 		int *P = CUR->OR_point+4*ii;
 		CvScalar col = get_color(CUR->type[ii]);
-		CvPoint p1=cvPoint(P[0],P[1]);	
+		CvPoint p1=cvPoint(P[0],P[1]);
 		CvPoint p2=cvPoint(P[2],P[3]);
 		cvRectangle(Image,p1,p2,col,3);			//draw current-object rectangle
 		cvLine(Image,p1,p2,col,2);
@@ -116,11 +116,11 @@ void show_rects(IplImage *Image,RESULT *CUR,FLOAT ratio)
 //show rectangle boxes(with object_tracking result) for debug
 void show_array(IplImage *Image,RESULT *LR,int *PP)
 {
-	CvScalar COL = cvScalar(255.0,200.0,150.0);	//color of particles 
+	CvScalar COL = cvScalar(255.0,200.0,150.0);	//color of particles
 	for(int ii=0;ii<LR->num;ii++)
 	{
 		int *P=PP+ii*4;
-		CvPoint p1=cvPoint(P[0],P[1]);	
+		CvPoint p1=cvPoint(P[0],P[1]);
 		CvPoint p2=cvPoint(P[2],P[3]);
 		cvRectangle(Image,p1,p2,COL,3);
 		cvLine(Image,p1,p2,COL,2);
@@ -128,7 +128,7 @@ void show_array(IplImage *Image,RESULT *LR,int *PP)
 		p2 = cvPoint(P[2],P[1]);
 		cvLine(Image,p1,p2,COL,2);
 	}
-	s_free(PP);	
+	s_free(PP);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -140,7 +140,7 @@ int *show_particles(IplImage *Image,RESULT *CUR,PINFO *P_I)
 	int *NEXT = (int *)calloc(CUR->num*4,sizeof(int));
 	if(CUR->num>0)
 	{
-		CvScalar COL = cvScalar(255.0,255.0,255.0);	//color of particles 
+		CvScalar COL = cvScalar(255.0,255.0,255.0);	//color of particles
 		CvScalar COL2 = cvScalar(150.0,200.0,0.0);	//color of predicted position
 		for(int ii=0;ii<CUR->num;ii++)
 		{
@@ -188,8 +188,8 @@ int *show_particles(IplImage *Image,RESULT *CUR,PINFO *P_I)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //show velocity-vector on image
 int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,FLOAT ratio)
-{	
-	//parameters 
+{
+	//parameters
 	const int height = Image->height;
 	const int width = Image->width;
 	const int UpY = height/10;
@@ -238,9 +238,9 @@ int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,FLOAT ratio)
 
 
 		//save vector coordinate
-		IM_V[4*ii]=(int)((FLOAT)LAS_X/ratio); 		
+		IM_V[4*ii]=(int)((FLOAT)LAS_X/ratio);
 		IM_V[4*ii+1]=(int)((FLOAT)LAS_Y/ratio)+UpY;
-		IM_V[4*ii+2]=(int)(NEXT_X/ratio); 		
+		IM_V[4*ii+2]=(int)(NEXT_X/ratio);
 		IM_V[4*ii+3]=(int)(NEXT_Y/ratio)+UpY;
 
 		CvPoint PLAS = cvPoint(IM_V[4*ii],IM_V[4*ii+1]);	//draw current rectangle position
@@ -251,14 +251,14 @@ int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,FLOAT ratio)
 		//int TEMP_X2 = P_I->L_P[ii][6];
 		//int TEMP_Y2 = P_I->L_P[ii][7];
 		//printf("last [%d %d %d %d]\n ",TEMP_X1,TEMP_X2,TEMP_Y1,TEMP_Y2);
-		//CvPoint p1=cvPoint(TEMP_X1,TEMP_Y1);	
+		//CvPoint p1=cvPoint(TEMP_X1,TEMP_Y1);
 		//CvPoint p2=cvPoint(TEMP_X2,TEMP_Y2);
 		//cvRectangle(Image,p1,p2,GCOL,3);			//draw current-object rectangle
 
 		if(M_LENGTH<3 && CUR->type[ii]==1)	//static object
 		{
-			//for debug 
-			if(WID>50 && HEI>50) 
+			//for debug
+			if(WID>50 && HEI>50)
 			{
 				cvCircle(Image,PLAS,10,GCOL,-1);
 				IM_V[4*ii]=-1; IM_V[4*ii+1]=-1; IM_V[4*ii+2]=-1; IM_V[4*ii+3]=-1;
@@ -293,7 +293,7 @@ int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,FLOAT ratio)
 			YAA1 =xmflag*(int)(-SIN_T*XA1+COS_T*ARL)+LAS_Y;
 			XAA2 =xmflag*(int)(COS_T*XA1+SIN_T*(-ARL))+LAS_X;
 			YAA2 =xmflag*(int)(-SIN_T*XA1+COS_T*(-ARL))+LAS_Y;
-			//draw line and array 
+			//draw line and array
 			cvLine(Image,PLAS,PNEX,COL,5);
 			//CvPoint PP = cvPoint(XAA1,YAA1);
 			CvPoint PP = cvPoint((int)((FLOAT)XAA1/ratio),(int)((FLOAT)YAA1/ratio+UpY));
@@ -324,7 +324,7 @@ int *show_vector_im(IplImage *Image,RESULT *CUR,PINFO *P_I,FLOAT ratio)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //show velocity-vector on 2D MAP
 void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC,FLOAT ratio)
-{	
+{
 	//Image information
 	const int height = IM->height;
 	const int width = IM->width;
@@ -337,9 +337,9 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 	FLOAT X_RANGE = 2.0;
 	FLOAT Y_RANGE = 4.0;
 	int Y_OFFS = 20;
-	int Y_OF_IM = MAP->height-Y_OFFS;	
+	int Y_OF_IM = MAP->height-Y_OFFS;
 	int X_HAL = MAP->width/2;
-	FLOAT Xratio=(FLOAT)X_HAL/X_RANGE;	
+	FLOAT Xratio=(FLOAT)X_HAL/X_RANGE;
 	FLOAT Yratio=(FLOAT)(Y_OF_IM)/Y_RANGE;
 	CvScalar COL = cvScalar(0.0,0.0,255.0);
 	CvScalar COL2 = cvScalar(0.0,255.0,255.0);
@@ -350,7 +350,7 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 		//draw average point
 		FLOAT X = P_I->ave_p[kk][1];
 		FLOAT Y = P_I->ave_p[kk][0];
-		int Ximg = X_HAL  -(int)(Xratio*X);	
+		int Ximg = X_HAL  -(int)(Xratio*X);
 		int Yimg = Y_OF_IM-(int)(Yratio*Y);
 		FLOAT D_RANGE = Y*TAN_ANG*2;
 		FLOAT Pi_AX=(FLOAT)I_VEC[4*kk];
@@ -368,7 +368,7 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 		CvPoint PC=cvPoint(Ximg,Yimg);
 		cvCircle(MAP,PC,5,COL,-1);		//draw average vehicle point
 
-		int XimgA = X_HAL  -(int)(Xratio*(X-XD));	
+		int XimgA = X_HAL  -(int)(Xratio*(X-XD));
 		int YimgA = Y_OF_IM-(int)(Yratio*(Y-YD));
 
 		CvPoint PC2=cvPoint(XimgA,YimgA);
@@ -385,7 +385,7 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 			FLOAT ARL=5.0;
 			FLOAT theata = -atan((FLOAT)Y_MOVE/(FLOAT)X_MOVE);
 			FLOAT COS_T = cos(theata);
-			FLOAT SIN_T = sin(theata);		
+			FLOAT SIN_T = sin(theata);
 			int xmflag = 1;
 			if(X_MOVE<0) xmflag =-1;
 			if(M_LENGTH>10)	{XA1 =M_LENGTH-10; ARL=10.0;}
@@ -423,7 +423,7 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 			cvLine(Image,PLAS,PNEX,COL,5);
 		}*/
 
-	}	
+	}
 }
 
 
@@ -431,7 +431,7 @@ void show_vector_2D(IplImage *MAP,IplImage *IM,RESULT *CUR,PINFO *P_I,int *I_VEC
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //show velocity-vector on image
 void show_vector(IplImage *Image,IplImage *TMAP,RESULT *CUR,PINFO *P_I,FLOAT ratio)
-{	
+{
 	if(CUR->num>0)
 	{
 		int *I_VEC=show_vector_im(Image,CUR,P_I,ratio);
@@ -460,7 +460,7 @@ void show_likelihood(IplImage *Image,CvMat *LIKE,int *COORD)
 			cvSetReal2D(OIM,Y+jj,X+ii,cvmGet(LIKE,jj,ii));
 		}
 	}
-	
+
 	cvReleaseImage(&OIM);
 }
 
@@ -490,13 +490,13 @@ void show_det_score(IplImage *Image,FLOAT *ac_score,RESULT *CUR)
 				TP++;
 			}
 		}
-	
+
 		//draw rectangle
 		for(int ii=0;ii<CUR->num;ii++)
 		{
 			int *P = CUR->point+4*ii;
 			CvScalar col = get_color(CUR->type[ii]);
-			CvPoint p1=cvPoint(P[0],P[1]);	
+			CvPoint p1=cvPoint(P[0],P[1]);
 			CvPoint p2=cvPoint(P[2],P[3]);
 			cvRectangle(D_score,p1,p2,col,3);			//draw current-object rectangle
 			cvLine(D_score,p1,p2,col,2);
@@ -532,7 +532,7 @@ void save_result(IplImage *Image,int fnum)
   strcpy(pass, OUT_NAME);
   //sprintf_s(num,sizeof(num),"%d",fnum);
   sprintf(num, "%d",fnum);
-  
+
   //strcat_s(pass,sizeof(pass),num);
   strcat(pass, num);
   //strcat_s(pass,sizeof(pass),EX_NAME);
@@ -566,7 +566,7 @@ IplImage *load_suc_image(int fnum)
 //over-write detection result
 void ovw_det_result(IplImage *OR,IplImage *DE, FLOAT ratio)
 {
-	//parameters 
+	//parameters
 	const int height = OR->height;
 	const int width = OR->width;
 	const int UpY = height/10;
