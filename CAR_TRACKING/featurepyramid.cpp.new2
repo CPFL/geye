@@ -1536,7 +1536,6 @@ FLOAT **calc_f_pyramid
 #endif
       memcpy(&FTSIZE[td[ss].F_C*2], td[ss].FSIZE, sizeof(int)*2);
 
-      close(ts[ss]);
     }
 
 #ifndef ORIGINAL
