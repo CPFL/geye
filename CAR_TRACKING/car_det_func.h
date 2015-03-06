@@ -6,7 +6,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////detect_func.h functions about car-detection (to extend main.cc) //////////////////////////////////////////////
 
-#include <stdio.h>	
+#include <stdio.h>
 #include "MODEL_info.h"		//File information
 
 #include "switch_float.h"
@@ -20,7 +20,7 @@
 //load_model.cpp
 
 extern MODEL *load_model(FLOAT ratio);						//load MODEL(filter)
-extern void free_model(MODEL *MO);							//release model 
+extern void free_model(MODEL *MO);							//release model
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -28,7 +28,7 @@ extern void free_model(MODEL *MO);							//release model
 //detect.cpp
 
 extern RESULT *car_detection(IplImage *IM,MODEL *MO,FLOAT thresh,int *D_NUMS,FLOAT *A_SCORE,FLOAT overlap);//car detection
-extern IplImage *ipl_cre_resize(IplImage *IM,int width,int height);									//create and resize Iplimage 
+extern IplImage *ipl_cre_resize(IplImage *IM,int width,int height);									//create and resize Iplimage
 extern IplImage *ipl_resize(IplImage *IM,FLOAT ratio);												//resize image (IplImage)
 extern FLOAT *ini_ac_score(IplImage *IM);															//initialize accumulated score
 extern IplImage *load_suc_image(int fnum);															//load image_pictures

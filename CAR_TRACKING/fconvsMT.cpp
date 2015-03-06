@@ -1,5 +1,5 @@
 //C++ library (thread-functions are only supported by windows)
-#include <stdio.h>		
+#include <stdio.h>
 #include <stdlib.h>
 //#include <windows.h>
 //#include <process.h>
@@ -32,7 +32,7 @@ FLOAT *dst_C;
 
 
 /* static structure to pass the multi-arguments to p-thread */
-/* NOTE:A structure definition is private to a source file 
+/* NOTE:A structure definition is private to a source file
    unless placed in a shared header file. */
 typedef struct {
   CUdeviceptr  C_dev;
@@ -209,13 +209,13 @@ void getTexRef(CUdeviceptr dev_ptr, const char* texName, CUtexref *texref_ptr, s
 
 
 /*******************************************************/
-/* sub function to create Look-Up Table 
+/* sub function to create Look-Up Table
    to adjust pointer position in GPU */
 void make_idxAdjust_LUT
 (
- int *feat_size, 
+ int *feat_size,
  int *model_size,
- int feat_num, 
+ int feat_num,
  int model_num,
  CUdeviceptr *feat_idx_LUT_dev,
  CUdeviceptr *model_idx_LUT_dev
@@ -333,15 +333,15 @@ FLOAT ***fconvsMT_GPU
   CUdeviceptr root_error_array_dev, part_error_array_dev;
   start=start-1;
   end=end-1;
-  
+
   const int len=end-start+1;
   FLOAT ***Output = (FLOAT ***)malloc(L_MAX*sizeof(FLOAT **));  // make FLOAT* Output[L_MAX][len]
-  
+
   struct timeval tv;
 
   pthread_t **th_handler = (pthread_t **)calloc(L_MAX, sizeof(pthread_t *));
   pthread_t *dst_th_handler = (pthread_t *)calloc(L_MAX*len, sizeof(pthread_t));
-  //  thread_data **td = (thread_data **)malloc(L_MAX*sizeof(thread_data *));  // make thread_data td[L_MAX][len] 
+  //  thread_data **td = (thread_data **)malloc(L_MAX*sizeof(thread_data *));  // make thread_data td[L_MAX][len]
   fconvs_thread_arg **td = (fconvs_thread_arg **)calloc(L_MAX, sizeof(fconvs_thread_arg *));  // make fconvs_thread_arg td[L_MAX][len]
   //  thread_data *dst_td = (thread_data *)calloc(L_MAX*len, sizeof(thread_data));
   fconvs_thread_arg *dst_td = (fconvs_thread_arg *)calloc(L_MAX*len, sizeof(fconvs_thread_arg));
@@ -356,35 +356,35 @@ FLOAT ***fconvsMT_GPU
 //    ptr_td += (unsigned long long int)(len*sizeof(thread_data));
     ptr_td += (unsigned long long int)(len*sizeof(fconvs_thread_arg));
   }
-  
 
-  //  int max_height=0, max_width=0;  
-  
+
+  //  int max_height=0, max_width=0;
+
   CUresult res;
   res = cuCtxSetCurrent(ctx[0]);
   MY_CUDA_CHECK(res, "cuCtxSetCurrent(ctx[0])");
 
-  
+
   int thread_num_x, thread_num_y, block_num_x, block_num_y;
   CUdeviceptr B_dims_dev;
-  
+
   int *B_dimension = (int*)malloc(3*len*sizeof(int));
-  
+
   CUdeviceptr B_dev;
-  //  CUdeviceptr C_dev;  
-  
+  //  CUdeviceptr C_dev;
+
   size_t SUM_SIZE_B = 0;
   //  size_t SUM_SIZE_C = 0;
   SUM_SIZE_C = 0;
-  
+
   /* array in order to apply loop condition to kernel */
-  int error_array_num = 0;  
+  int error_array_num = 0;
   int *error_array;
   //  CUdeviceptr error_array_dev;
 
   /**********************************************************************/
   /* prepare output region */
-  
+
   /* allocate output region in lump */
   FLOAT **dst_output;
   dst_output = (FLOAT **)malloc(L_MAX*len*sizeof(FLOAT *));
@@ -403,20 +403,20 @@ FLOAT ***fconvsMT_GPU
   }
   /* prepare output region */
   /**********************************************************************/
-  
+
 
   /* prepare for launch kernel */
-  for(int ii=0;ii<len;ii++)  // filter's loop(B's loop) 
+  for(int ii=0;ii<len;ii++)  // filter's loop(B's loop)
     {
       /* store B dimendion in B_dimension */
       B_dimension[ii*3] = B_SIZE[ii][0];
       B_dimension[ii*3 + 1] = B_SIZE[ii][1];
       B_dimension[ii*3 + 2] = 31;
-  
+
       SUM_SIZE_B += B_dimension[ii*3]*B_dimension[ii*3 + 1]*B_dimension[ii*3 + 2]*sizeof(FLOAT);
     }  //for(len)
-  
-  
+
+
   for(int level=interval; level<L_MAX; level++) {
     int L = level - interval;
     /**************************************************************************/
@@ -429,9 +429,9 @@ FLOAT ***fconvsMT_GPU
     /* loop conditon */
     /**************************************************************************/
     for(int jj=0; jj<len; jj++) {
-      
+
       /* compute size of output */
-      
+
       int height, width;
       switch(calc_flag) {
       case ROOT:
@@ -448,15 +448,15 @@ FLOAT ***fconvsMT_GPU
         break;
       }
 
-      
+
       // /* search max height and max width */
       // max_height = (max_height < height) ? height : max_height;
       // max_width = (max_width < width) ? width : max_width;
-      
+
       if (height < 1 || width < 1)
         {
           printf("Invalid input: B should be smaller than A\n");
-          printf("height %d, width %d\n", height, width);  
+          printf("height %d, width %d\n", height, width);
           exit(0);
         }
 
@@ -465,26 +465,26 @@ FLOAT ***fconvsMT_GPU
       switch(calc_flag){
       case ROOT:
         //        printf("td[%d][%d] height, width = (%d, %d)\n", level, jj, height, width);
-        td[level][jj].C_dims[0]=height; 
+        td[level][jj].C_dims[0]=height;
         td[level][jj].C_dims[1]=width;
-        
+
         SUM_SIZE_C += td[level][jj].C_dims[0]*td[level][jj].C_dims[1]*sizeof(FLOAT);
-        
+
         M_size_array[level][jj*2]=height;
         M_size_array[level][jj*2+1]=width;
         break;
-        
-      case PART:      
+
+      case PART:
         //        printf("td[%d][%d] height, width = (%d, %d)\n", L, jj, height, width);
-        td[L][jj].C_dims[0]=height; 
+        td[L][jj].C_dims[0]=height;
         td[L][jj].C_dims[1]=width;
 
         SUM_SIZE_C += td[L][jj].C_dims[0]*td[L][jj].C_dims[1]*sizeof(FLOAT);
-        
+
         M_size_array[L][jj*2]=height;
         M_size_array[L][jj*2+1]=width;
         break;
-        
+
       default:
         printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
         exit(1);
@@ -493,15 +493,15 @@ FLOAT ***fconvsMT_GPU
     }
     //    printf("===================\n");
   }
-  
-  
+
+
   /* save loop condition */
   res = cuMemHostAlloc((void **)&error_array, error_array_num*sizeof(int), CU_MEMHOSTALLOC_DEVICEMAP);
   if(res != CUDA_SUCCESS) {
     printf("cuMemHostAlloc(error_array) failed: res = %s\n", conv(res));
     exit(1);
   }
-  
+
   int hh=0;
 
   if (calc_flag == PART) {
@@ -513,7 +513,7 @@ FLOAT ***fconvsMT_GPU
 
     if( (FSIZE[level*2]+2*pady < max_Y) || (FSIZE[level*2+1]+2*padx < max_X) )
       { /* if this evaluation formula is TRUE, the level will not be calculated */
-      
+
         switch(calc_flag){
         case ROOT:
           error_array[hh] = level;
@@ -523,14 +523,14 @@ FLOAT ***fconvsMT_GPU
           part_error_array[hh] = L;
           error_array[hh] = L;
           break;
-          
+
         default:
           printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
           exit(1);
           break;
         }
-        
-        
+
+
         hh++;
         if(hh > error_array_num) {
           printf("beyond error_array_num!\n");
@@ -538,7 +538,7 @@ FLOAT ***fconvsMT_GPU
         }
       }
   }
-  
+
 
 
   /* define CUDA block shape */
@@ -575,10 +575,10 @@ FLOAT ***fconvsMT_GPU
   // NR_MAXTHREADS_Y[0] = (int)sqrt((FLOAT)max_threads_num/len);
   // if(NR_MAXTHREADS_X[0] < 1) NR_MAXTHREADS_X++;
   // if(NR_MAXTHREADS_Y[0] < 1) NR_MAXTHREADS_Y++;
-  
+
   // thread_num_x = (max_width < NR_MAXTHREADS_X[0]) ? max_width : NR_MAXTHREADS_X[0];
   // thread_num_y = (max_height < NR_MAXTHREADS_Y[0]) ? max_height : NR_MAXTHREADS_Y[0];
-  
+
   // block_num_x = max_width / thread_num_x;
   // block_num_y = max_height / thread_num_y;
   // if(max_width % thread_num_x != 0) block_num_x++;
@@ -615,7 +615,7 @@ FLOAT ***fconvsMT_GPU
     printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
     exit(1);
     break;
-    
+
   }
 
   /* upload data to GPU memory */
@@ -630,18 +630,18 @@ FLOAT ***fconvsMT_GPU
   /* upload filter */
   res = cuMemcpyHtoD(B_dev, filter[start], SUM_SIZE_B);
   MY_CUDA_CHECK(res, "cuMemcpyHtoD(B_dev)");
-  
+
   switch(calc_flag) {
   case ROOT:
     res = cuMemcpyHtoD(root_error_array_dev, error_array, error_array_num*sizeof(int));
     MY_CUDA_CHECK(res, "cuMemcpyHtoD(root_error_array_dev)");
     break;
-    
+
   case PART:
     res = cuMemcpyHtoD(part_error_array_dev, error_array, error_array_num*sizeof(int));
     MY_CUDA_CHECK(res, "cuMemcpyHtoD(part_error_array_dev)");
     break;
-    
+
   default:
     printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
     exit(1);
@@ -728,7 +728,7 @@ FLOAT ***fconvsMT_GPU
     gettimeofday(&tv_memcpy_end, NULL);
     tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
     time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-    
+
     break;
 
   default:
@@ -759,12 +759,12 @@ FLOAT ***fconvsMT_GPU
   gettimeofday(&tv_memcpy_end, NULL);
   tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
   time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-    
+
 
   /* launch kernel
-     grid shape : block_num_x * block_num_y * L_MAX, 
-     block shape : thread_num_x * thread_num_y * len 
-  */              
+     grid shape : block_num_x * block_num_y * L_MAX,
+     block shape : thread_num_x * thread_num_y * len
+  */
   /* dealing with 1 feature(A) by 1 z_dimension of grid */
   /* dealing with 1 model(B) by 1 z_dimension of block */
 
@@ -780,7 +780,7 @@ FLOAT ***fconvsMT_GPU
   //   &root_error_array_dev,      // kernel_args[8]
   //   (void *)&error_array_num    // kernel_args[9]
   // };
-  
+
   // if(calc_flag == PART) {
   //   // kernel_args[2] = &part_C_dev;
   //   // kernel_args[8] = &part_error_array_dev;
@@ -790,8 +790,8 @@ FLOAT ***fconvsMT_GPU
   // int sharedMemBytes = 0;
 
   gettimeofday(&tv_kernel_start, NULL);
-  // switch(calc_flag) {  
-  // case ROOT: 
+  // switch(calc_flag) {
+  // case ROOT:
   //   res = cuLaunchKernel(
   //                        func_process_root[0], // call function
   //                        block_num_x,       // gridDimX
@@ -807,7 +807,7 @@ FLOAT ***fconvsMT_GPU
   //                        );
   //   MY_CUDA_CHECK(res, "cuLaunchKernel(root)");
   //   break;
-  // case PART: 
+  // case PART:
   //   res = cuLaunchKernel(
   //                        func_process_part[0], // call function
   //                        block_num_x,       // gridDimX
@@ -842,10 +842,10 @@ FLOAT ***fconvsMT_GPU
     }
     /**************************************************************************/
     //    for (int jj=0; jj<len; jj++) {
-  
-      /* assign values to thread argument structure 
+
+      /* assign values to thread argument structure
          and create GP kernel Launcher thread
-      */    
+      */
       switch(calc_flag) {
       case ROOT:
 #if 0
@@ -882,7 +882,7 @@ FLOAT ***fconvsMT_GPU
         pthread_create(&th_handler[level][0], NULL, fconvs_byGPU, (void *)&td[level][0]);
 #endif
         break;
-        
+
       case PART:
 #if 0
         td[L][jj].C_dev           = part_C_dev;
@@ -921,8 +921,8 @@ FLOAT ***fconvsMT_GPU
       }
       //  }
   }
-  
-  
+
+
   /* synchronize GPU threads */
   // res = cuCtxSynchronize();
   // MY_CUDA_CHECK(res, "cuCtxSynchronize(process)");
@@ -989,8 +989,8 @@ FLOAT ***fconvsMT_GPU
 
   /* download C from GPU */
   gettimeofday(&tv_memcpy_start, NULL);
-  switch(calc_flag) { 
-  case ROOT: 
+  switch(calc_flag) {
+  case ROOT:
     // res = cuMemcpyDtoH((void *)dst_C, root_C_dev, SUM_SIZE_C);
     // MY_CUDA_CHECK(res, "bcuMemcpyDtoH(dst_C_root)");
     res = cuMemcpyDtoH((void *)root_dst_C, root_C_dev, SUM_SIZE_C);
@@ -1008,12 +1008,12 @@ FLOAT ***fconvsMT_GPU
     printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
     exit(1);
     break;
-    
+
   }
   gettimeofday(&tv_memcpy_end, NULL);
   tvsub(&tv_memcpy_end, &tv_memcpy_start, &tv);
   time_memcpy += tv.tv_sec * 1000.0 + (float)tv.tv_usec / 1000.0;
-  
+
 
   /* close handle and get output */
   for(int level=interval; level<L_MAX; level++) {
@@ -1028,15 +1028,15 @@ FLOAT ***fconvsMT_GPU
     /**************************************************************************/
     for(int jj=0; jj<len; jj++) {
       switch(calc_flag){
-        
+
       case ROOT:
         Output[level][jj] = td[level][jj].C;
         break;
-        
+
       case PART:
         Output[L][jj] = td[L][jj].C;
         break;
-        
+
       default:
         printf("NOT DEFINED value: calc_flag = %d\n", calc_flag);
         exit(1);
@@ -1045,9 +1045,9 @@ FLOAT ***fconvsMT_GPU
 
     }
   }
-  
 
-  
+
+
   /* free GPU memory */
   // res = cuMemFree(featp2_dev);
   // MY_CUDA_CHECK(res, "cuMemFree(featp2_dev)");
@@ -1078,7 +1078,7 @@ FLOAT ***fconvsMT_GPU
     MY_CUDA_CHECK(res, "cuMemFree(part_C_dev)");
     break;
   }
-  
+
   res = cuMemFree(A_LUT_dev);
   MY_CUDA_CHECK(res, "cuMemFree(A_LUT_dev)");
 
@@ -1086,20 +1086,19 @@ FLOAT ***fconvsMT_GPU
   MY_CUDA_CHECK(res, "cuMemFree(B_LUT_dev)");
 
 
-  
+
   /* free CPU memory */
   res = cuMemFreeHost((void *)error_array);
   MY_CUDA_CHECK(res, "cuMemFreeHost(error_array)");;
 
-  
+
   s_free(B_dimension);
   s_free(th_handler[0]);
   s_free(th_handler);
-  s_free(td[0]);	  
-  s_free(td);	
+  s_free(td[0]);
+  s_free(td);
 
 
   return(Output);
-  
-} /* FLOAT ***fconvsMT_GPU() */
 
+} /* FLOAT ***fconvsMT_GPU() */

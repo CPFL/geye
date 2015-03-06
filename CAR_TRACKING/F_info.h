@@ -13,9 +13,3 @@
 #define L_DATA_PASS		"./CAR_TRACKING/"
 
 #endif
-
-
-
-
-
-

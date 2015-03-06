@@ -104,9 +104,9 @@ FLOAT *nms(FLOAT *boxes,FLOAT overlap,int *num,MODEL *MO)
       int *sorted_orders = (int *)calloc(NUM,sizeof(int));
       FLOAT *P=boxes;
       //calculate area of each boundary-box
-      
+
       FLOAT *score_t = scores;
-      int *so_t =sorted_orders; 
+      int *so_t =sorted_orders;
       for(int ii=0;ii<NUM;ii++)
         {
           area[ii]=(P[3]-P[1]+1.0)*(P[2]-P[0]+1.0);
@@ -115,14 +115,14 @@ FLOAT *nms(FLOAT *boxes,FLOAT overlap,int *num,MODEL *MO)
           *(so_t++)=ii;
           P+=GL;
         }
-      
+
       quickSort(scores,sorted_orders,0,NUM-1);	//sort score of detected rectangle
-      
+
       int *checked = (int *)calloc(NUM,sizeof(int));		//cheked flags (picked =1,non-checked =0,suppressed =-1)
       int cnum =NUM-1;
       int cur=0;
       int pi_num=0;
-      
+
       while(cnum>0)
         {
           int A=sorted_orders[cur];
@@ -135,12 +135,12 @@ FLOAT *nms(FLOAT *boxes,FLOAT overlap,int *num,MODEL *MO)
           cnum--;
           cur++;
           pi_num++;
-          
+
           for(int kk=cur;kk<NUM;kk++)
             {
               int B = sorted_orders[kk];
               if(checked[B]!=0) continue;
-              
+
               P=boxes+GL*B;
               FLOAT yy1 = max_d(Ay1,P[0]);
               FLOAT xx1 = max_d(Ax1,P[1]);
@@ -149,7 +149,7 @@ FLOAT *nms(FLOAT *boxes,FLOAT overlap,int *num,MODEL *MO)
               FLOAT w = xx2-xx1+1.0;
               FLOAT h = yy2-yy1+1.0;
               FLOAT R_AREA = min_d(area[A],area[B]);
-              
+
               //eliminate over-lap rectangles
               //over-lap(normal)
               if(w>0&&h>0)
@@ -165,16 +165,16 @@ FLOAT *nms(FLOAT *boxes,FLOAT overlap,int *num,MODEL *MO)
               //full over-lap
               else if(Ay1<P[0]&&Ax1<P[1]&&Ay2>P[2]&&Ax2>P[3])
                 {
-                  checked[B]=-1;	//suppress	
+                  checked[B]=-1;	//suppress
                   cnum--;
                 }
               else if(Ay1>P[0]&&Ax1>P[1]&&Ay2<P[2]&&Ax2<P[3])
                 {
-                  checked[B]=-1;	//suppress	
+                  checked[B]=-1;	//suppress
                   cnum--;
                 }
             }
-          
+
           //decide next current
           for(int kk=cur;kk<NUM;kk++)
             {
@@ -184,14 +184,14 @@ FLOAT *nms(FLOAT *boxes,FLOAT overlap,int *num,MODEL *MO)
                   break;
                 }
             }
-          
+
         }
-      
+
       //get result (rectangle-box coordinate)
       FLOAT *Out = (FLOAT*)calloc(pi_num*GL,sizeof(FLOAT));
       int count =0,ii=0;
       FLOAT *Pout =Out;
-      
+
       while(count<pi_num)
         {
           if(checked[ii]==1)
@@ -209,8 +209,8 @@ FLOAT *nms(FLOAT *boxes,FLOAT overlap,int *num,MODEL *MO)
       s_free(scores);
       s_free(sorted_orders);
       s_free(checked);
-      
-      //Output 
+
+      //Output
       *num = pi_num;
       return(Out);
     }

@@ -7,7 +7,7 @@
 //////////////Laser_info.h   Laser_radar information & definition header  /////////////////////////////////////////
 
 //OpenCV library
-//#include "cv.h"			
+//#include "cv.h"
 //#include "cxcore.h"
 //#include "highgui.h"
 #include "cv.h"
@@ -15,19 +15,19 @@
 #include "cxcore.h"
 #ifdef _DEBUG
     //Debugモードの場合
-    #pragma comment(lib,"cv200d.lib") 
-    #pragma comment(lib,"cxcore200d.lib") 
-    #pragma comment(lib,"cvaux200d.lib") 
-    #pragma comment(lib,"highgui200d.lib") 
+    #pragma comment(lib,"cv200d.lib")
+    #pragma comment(lib,"cxcore200d.lib")
+    #pragma comment(lib,"cvaux200d.lib")
+    #pragma comment(lib,"highgui200d.lib")
 #else
     //Releaseモードの場合
-    #pragma comment(lib,"cv200.lib") 
-    #pragma comment(lib,"cxcore200.lib") 
-    #pragma comment(lib,"cvaux200.lib") 
-    #pragma comment(lib,"highgui200.lib") 
+    #pragma comment(lib,"cv200.lib")
+    #pragma comment(lib,"cxcore200.lib")
+    #pragma comment(lib,"cvaux200.lib")
+    #pragma comment(lib,"highgui200.lib")
 #endif
 //C++ library
-#include <stdio.h>	
+#include <stdio.h>
 
 #include "switch_float.h"
 
@@ -36,7 +36,7 @@
 
 #define m_PI 3.1415926535
 
-//camera parameter 
+//camera parameter
 #define VA 59.5
 #define cxp 0.135
 #define cyp -0.005

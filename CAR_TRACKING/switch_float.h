@@ -35,18 +35,3 @@ extern struct timeval tv_memcpy_start, tv_memcpy_end;
 extern float time_memcpy;
 extern struct timeval tv_kernel_start, tv_kernel_end;
 extern float time_kernel;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

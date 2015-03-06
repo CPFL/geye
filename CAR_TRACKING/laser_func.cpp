@@ -33,16 +33,16 @@ void Release_sdata(SCANDATA *sdata);												//release scan point data
 CvScalar get_c_color(int coltype);													//get color for each channel
 CvScalar get_c_mono(int coltype);
 IplImage *ini_Image(int WID,int HEI);												//initialize zero-image
-void radar_data_fusion(SCANDATA *sdata,IplImage* IM,RESULT *RES,PINFO *PI);			//draw scan point on image 
+void radar_data_fusion(SCANDATA *sdata,IplImage* IM,RESULT *RES,PINFO *PI);			//draw scan point on image
 void draw_point_on_image(SCANDATA *sdata,IplImage* IM,RESULT *RES);					//draw scan-point on image
 IplImage *draw_point_MAP2D(SCANDATA *sdata,char *WNAME);							//draw sacn-point 2D map
 void skip_laser_frame(FILE* fp,int sk_num,int *fnum);								//skip_laser_frame
 void skip_image_frame(CvCapture *capt,int sk_num);									//skip_image_frame
-void get_f_size(FILE* fp,fpos_t *curpos,fpos_t *fsize);								//get file size 
-SCANDATA *get_s_data(FILE *fp,IplImage *IMG,fpos_t *curpos);						//get scan-point data	
+void get_f_size(FILE* fp,fpos_t *curpos,fpos_t *fsize);								//get file size
+SCANDATA *get_s_data(FILE *fp,IplImage *IMG,fpos_t *curpos);						//get scan-point data
 IplImage *draw_sdata(SCANDATA *sdata,IplImage* IM,RESULT *RES);						//visualize scan data
 void skip_data(FILE* fp,CvCapture *capt,int sk_num,int *fnum);						//skip data (for debug)
-void skip_data_2(FILE* fp,int sk_num,int *ss);										
+void skip_data_2(FILE* fp,int sk_num,int *ss);
 IplImage *combine_image (int num, IplImage ** tmp);									//combine image
 
 char b_cmp[]={0xAF,0xFE,0xC0,0xC0,0xAF,0xFE,0xC0,0xC0};								//magic words of laser-lader data
@@ -163,10 +163,10 @@ CvScalar get_c_mono(int coltype)
 	CvScalar COL;
 	switch(coltype)
 	{
-		case 0: 
+		case 0:
 			COL = cvScalar(25.0,50.0,25.0);
 			break;
-		case 1:	
+		case 1:
 			COL = cvScalar(50.0,100.0,50.0);
 			break;
 		case 2:
@@ -182,7 +182,7 @@ CvScalar get_c_mono(int coltype)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//initialize image 
+//initialize image
 IplImage *ini_Image(int WID,int HEI)
 {
 	IplImage *IMG = cvCreateImage(cvSize(WID,HEI),IPL_DEPTH_8U,3);
@@ -202,7 +202,7 @@ IplImage *ini_Image(int WID,int HEI)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//draw scan point on image 
+//draw scan point on image
 void radar_data_fusion(SCANDATA *sdata,IplImage* IM,RESULT *RES,PINFO *PI)
 {
 	for(int ii=0;ii<sdata->SNUM;ii++) sdata->CCLASS[ii]=-1;
@@ -248,7 +248,7 @@ void radar_data_fusion(SCANDATA *sdata,IplImage* IM,RESULT *RES,PINFO *PI)
 		{
 			ave_XN/=(FLOAT)c_count; ave_YN/=(FLOAT)c_count;	//average (X,Y) of each vehicle (TEMP)
 			int CC = 0;
-			
+
 			for(int ii=0;ii<sdata->SNUM;ii++)
 			{
 				if(sdata->CCLASS[ii]==kk)
@@ -272,7 +272,7 @@ void radar_data_fusion(SCANDATA *sdata,IplImage* IM,RESULT *RES,PINFO *PI)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//draw scan point on image 
+//draw scan point on image
 void draw_point_on_image(SCANDATA *sdata,IplImage* IM,RESULT *RES)
 {
 
@@ -297,7 +297,7 @@ void draw_point_on_image(SCANDATA *sdata,IplImage* IM,RESULT *RES)
 		{
 			CvScalar COL = get_c_color(sdata->Ctype[ii]);
 			CvPoint PP=cvPoint(X,Y);
-			cvCircle(IM,PP,2,COL,-1);	//draw circle	
+			cvCircle(IM,PP,2,COL,-1);	//draw circle
 		}
 	}
 }
@@ -318,7 +318,7 @@ IplImage *draw_point_MAP2D(SCANDATA *sdata)
 	int Y_OF_IM = IM->height-Y_OFFS;
 
 	int X_HAL = IM->width/2;
-	FLOAT Xratio=(FLOAT)X_HAL/X_RANGE;	
+	FLOAT Xratio=(FLOAT)X_HAL/X_RANGE;
 	FLOAT Yratio=(FLOAT)(Y_OF_IM)/Y_RANGE;
 
 	//draw camera position
@@ -373,7 +373,7 @@ IplImage *draw_point_MAP2D(SCANDATA *sdata)
 //skip laser pointer data (for synchronization and debug)
 void skip_laser_frame(FILE* fp,int sk_num,int *fnum)
 {
-	const char b_cmp[]={0xAF,0xFE,0xC0,0xC0,0xAF,0xFE,0xC0,0xC0};	//comparing array 
+	const char b_cmp[]={0xAF,0xFE,0xC0,0xC0,0xAF,0xFE,0xC0,0xC0};	//comparing array
 	char mword[]={0xAF,0xFE,0xC0,0xC0,0xAF,0xFE,0xC0,0xC0};	//magic words of laser-lader data
 	int b_locate;	//get number of all elements ([Channel,X,Y,Z]*scanpoint)
 	FLOAT temp;
@@ -385,8 +385,8 @@ void skip_laser_frame(FILE* fp,int sk_num,int *fnum)
 		if(strncmp(&mword[0],&b_cmp[0],8)!=0){printf("magic word error\n");return;}
 		//get size of laser-points int time T
 		fread(&temp,sizeof(FLOAT),1,fp);
-		b_locate = (int)temp;		//get scan-data size 
-		//access scan-point data 
+		b_locate = (int)temp;		//get scan-data size
+		//access scan-point data
 		FLOAT *spoint = (FLOAT *)calloc(b_locate,sizeof(FLOAT));
 		fread(spoint,sizeof(FLOAT),b_locate,fp);
 		s_free(spoint);
@@ -413,7 +413,7 @@ void skip_image_frame(CvCapture *capt,int sk_num)
 void get_f_size(FILE* fp,fpos_t *curpos,fpos_t *fsize)
 {
 	fseek(fp,0,SEEK_END);   //ファイルの終端位置へ移動
-	fgetpos(fp,fsize);		//get file size 
+	fgetpos(fp,fsize);		//get file size
 	fseek(fp,0,SEEK_SET);   //ファイルの先端位置を指定
 	fgetpos(fp,curpos);		//get current file position
 }
@@ -432,11 +432,11 @@ SCANDATA *get_s_data(FILE *fp,IplImage *IMG,fpos_t *curpos)
 	//check magic word
 	//if(strncmp(&mword[0],&b_cmp[0],8)!=0){printf("magic word error\n");exit(EXIT_FAILURE);}
 
-	//get number of all-elements	
+	//get number of all-elements
 	//fread(&temp,sizeof(FLOAT),1,fp);
-	//b_locate = (int)temp;				//get scan-data size 	
+	//b_locate = (int)temp;				//get scan-data size
 	b_locate = 4*SNUM;					//get number of scan point
-	//access scan-point data 	
+	//access scan-point data
 	FLOAT *spoint = (FLOAT *)calloc(b_locate,sizeof(FLOAT));		//scanpoint data
 	fread(spoint,sizeof(FLOAT),b_locate,fp);						//read scanpoint data
 	//get scan point data (# of data, (X,Y,Z)data, (X,Y)data on image)
@@ -454,8 +454,8 @@ SCANDATA *get_s_data(FILE *fp,IplImage *IMG,fpos_t *curpos)
 IplImage *draw_sdata(SCANDATA *sdata,IplImage* IM,RESULT *RES)
 {
 	//Scan-point visualization
-	draw_point_on_image(sdata,IM,RES);						//draw scan-points on Image 	
-	IplImage *TDMAP = draw_point_MAP2D(sdata);		//draw scan-points on 2D MAP 
+	draw_point_on_image(sdata,IM,RES);						//draw scan-points on Image
+	IplImage *TDMAP = draw_point_MAP2D(sdata);		//draw scan-points on 2D MAP
 	return TDMAP;
 }
 
@@ -464,7 +464,7 @@ IplImage *draw_sdata(SCANDATA *sdata,IplImage* IM,RESULT *RES)
 //skip data and image (for debug)
 void skip_data(FILE* fp,CvCapture *capt,int sk_num,int *fnum)
 {
-	const char b_cmp[]={0xAF,0xFE,0xC0,0xC0,0xAF,0xFE,0xC0,0xC0};	//comparing array 
+	const char b_cmp[]={0xAF,0xFE,0xC0,0xC0,0xAF,0xFE,0xC0,0xC0};	//comparing array
 	char mword[]={0xAF,0xFE,0xC0,0xC0,0xAF,0xFE,0xC0,0xC0};	//magic words of laser-lader data
 	int b_locate;	//get number of all elements ([Channel,X,Y,Z]*scanpoint)
 	FLOAT temp;
@@ -475,8 +475,8 @@ void skip_data(FILE* fp,CvCapture *capt,int sk_num,int *fnum)
 		fread(&mword,sizeof(FLOAT),1,fp);
 		if(strncmp(&mword[0],&b_cmp[0],8)!=0){printf("magic word error\n");return;}
 		fread(&temp,sizeof(FLOAT),1,fp);
-		b_locate = (int)temp;		//get scan-data size 
-		//access scan-point data 
+		b_locate = (int)temp;		//get scan-data size
+		//access scan-point data
 		FLOAT *spoint = (FLOAT *)calloc(b_locate,sizeof(FLOAT));
 		fread(spoint,sizeof(FLOAT),b_locate,fp);
 		s_free(spoint);
@@ -491,14 +491,14 @@ void skip_data_2(FILE* fp,int sk_num,int *ss)
 {
 	int b_locate;	//get number of all elements ([Channel,X,Y,Z]*scanpoint)
 
-	
+
 	for(int ii=0;ii<sk_num;ii++)
 	{
 		fread(&b_locate,sizeof(int),1,fp);
 		//printf("b_locate:%d\n",b_locate);
 		b_locate = b_locate*4;
 		//printf("b_locate:%d\n",b_locate);
-		//access scan-point data 
+		//access scan-point data
 		FLOAT *spoint = (FLOAT *)calloc(b_locate,sizeof(FLOAT));
 		fread(spoint,sizeof(FLOAT),b_locate,fp);
 		//printf("spoint0:%f spoint1:%f spoint2:%f spoint3:%f spoint4:%f\n",*spoint,*(spoint+1),*(spoint+2),*(spoint+3),*(spoint+4));
@@ -533,6 +533,3 @@ IplImage *combine_image (int num, IplImage ** tmp)
 	cvResetImageROI (cimg);
 	return cimg;
 }
-
-
-

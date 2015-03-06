@@ -46,13 +46,13 @@ FLOAT *resize(FLOAT *src,int *sdims,int *odims,FLOAT scale);
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//sub functions 
+//sub functions
 
 // copy src into dst using precomputed interpolation values
-inline void alphacopy(FLOAT *src, FLOAT *dst, struct alphainfo *ofs, int n) 
+inline void alphacopy(FLOAT *src, FLOAT *dst, struct alphainfo *ofs, int n)
 {
 	struct alphainfo *end = ofs + n;
-	while (ofs != end) 
+	while (ofs != end)
 	{
 		dst[ofs->di] += ofs->alpha * src[ofs->si];
 		ofs++;
@@ -65,11 +65,11 @@ inline void alphacopy(FLOAT *src, FLOAT *dst, struct alphainfo *ofs, int n)
 
 // resize along each column
 // result is transposed, so we can apply it twice for a complete resize
-void resize1dtran(FLOAT *src, int sheight, FLOAT *dst, int dheight, int width, int chan) 
+void resize1dtran(FLOAT *src, int sheight, FLOAT *dst, int dheight, int width, int chan)
 {
 	FLOAT scale = (FLOAT)dheight/(FLOAT)sheight;
-	FLOAT invscale = (FLOAT)sheight/(FLOAT)dheight; 
-	// we cache the interpolation values since they can be 
+	FLOAT invscale = (FLOAT)sheight/(FLOAT)dheight;
+	// we cache the interpolation values since they can be
 	// shared among different columns
 	int len = (int)(dheight*invscale+0.99) + 2*dheight;
 	alphainfo *ofs;
@@ -83,23 +83,23 @@ void resize1dtran(FLOAT *src, int sheight, FLOAT *dst, int dheight, int width, i
 		FLOAT fsy1 = dy * invscale;
 		FLOAT fsy2 = fsy1 + invscale;
 		int sy1 = (int)(fsy1+0.99);
-		int sy2 = (int)fsy2;       
+		int sy2 = (int)fsy2;
 		int dyW = dy*width;
 
 		if (sy1 - fsy1 > 1e-3) {
 			ofs[k].di = dyW;
 			ofs[k].si = sy1-1;
-			ofs[k++].alpha = (sy1 - fsy1) * scale;  
+			ofs[k++].alpha = (sy1 - fsy1) * scale;
 		}
-    
-		for (int sy = sy1; sy < sy2; sy++) 
+
+		for (int sy = sy1; sy < sy2; sy++)
 		{
 			ofs[k].di = dyW;
 			ofs[k].si = sy;
 			ofs[k++].alpha = scale;
 		}
 
-		if (fsy2 - sy2 > 1e-3) 
+		if (fsy2 - sy2 > 1e-3)
 		{
 			ofs[k].di = dyW;
 			ofs[k].si = sy2;
@@ -108,13 +108,13 @@ void resize1dtran(FLOAT *src, int sheight, FLOAT *dst, int dheight, int width, i
 	}
 	// resize each column of each color channel
 	memset(dst,0, chan*WD*sizeof(FLOAT));
-	for (int c = 0; c < chan; c++) 
+	for (int c = 0; c < chan; c++)
 	{
 		int CWS = c*WS;
 		int CWD = c*WD;
-		FLOAT *s = src + CWS;	
+		FLOAT *s = src + CWS;
 		FLOAT *d = dst + CWD;
-		for (int x = 0; x < width; x++) {     
+		for (int x = 0; x < width; x++) {
 			alphacopy(s, d, ofs, k);
 			s+=sheight;
 			d++;
