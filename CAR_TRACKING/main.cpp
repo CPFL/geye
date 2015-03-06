@@ -42,6 +42,8 @@
 #include "for_use_GPU.h"
 #include "switch_float.h"
 
+#include <string>
+#include <fstream>
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -49,7 +51,7 @@
 
 //definiton of functions//
 
-int main(void);	//main function (Object detection)
+int main(int argc, char* argv[]);	//main function (Object detection)
 
 /////////////////////////////////////////
 //data name
@@ -73,7 +75,7 @@ float time_kernel;
 
 int device_num;
 
-int main(void)
+int main(int argc, char* argv[])
 {
   FILE* fp;                   //file pointer
   CvCapture *capt;            //movie file capture
@@ -149,13 +151,29 @@ int main(void)
   //skip_data(fp,capt,1200,&fnum);
   skip_data_2(fp,1,&ss);   //‚ ‚éˆÊ’u‚©‚ç‚Ì‰æ‘œ‚ğŒ©‚é(¡‚Í50–‡–Ú‚©‚ç‚İ‚Ä‚¢‚éB)
 
+  /* Open ImageSet file */
+  std::ifstream ifs(argv[1]);
+  if (ifs == 0)
+    {
+      fprintf(stderr, "ImageSet file can't open\n");
+      fprintf(stderr, "program terminated\n");
+      return -1;
+    }
+  std::string line_contents;
+  getline(ifs, line_contents);  // skip first header line
 
 
   //load laser and movie data
   //for(int im=ss;im<2000;im++)
-  for(int im=1;im<=11;im++)
+  while (getline(ifs, line_contents))
   //  for(int im=1;im<=1;im++)      // for profile
     {
+
+      /* load ImageSet */
+      int image_id;
+      int groundTruth;
+      sscanf(line_contents.data(), "%06d %d", &image_id, &groundTruth);
+
       //int im = 11;
       gettimeofday(&tv_1process_start, NULL);
       time_memcpy = 0;
@@ -169,7 +187,7 @@ int main(void)
       //IplImage *IM_D=ipl_cre_resize(IMG,640,480);
 
       // load image
-      IplImage *IM_D=load_suc_image(im);
+      IplImage *IM_D=load_suc_image(image_id);
 
 
       //printf("‰¡’·‚³%d\n",3 * IM_D -> width);

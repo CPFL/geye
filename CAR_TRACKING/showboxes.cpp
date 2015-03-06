@@ -552,7 +552,7 @@ IplImage *load_suc_image(int fnum)
   //strcpy_s(pass,sizeof(pass),IN_S_NAME);
   strcpy(pass, IN_S_NAME);
   //sprintf_s(num,sizeof(num),"%d",fnum);
-  sprintf(num, "%d",fnum);
+  sprintf(num, "%06d",fnum);
   //strcat_s(pass,sizeof(pass),num);
   strcat(pass, num);
   //strcat_s(pass,sizeof(pass),EX_NAME);

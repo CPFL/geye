@@ -51,7 +51,7 @@
 #define IN_S_NAME		"CAR_TRACKING/Test_Images/Daytime_Image_PNG/"			//Input-Image(successive)
 #define OUTMNAME		"Out.avi"				//output movie name
 #define OUT_NAME		"Out_Image/res"		//Result name
-#define EX_NAME			".png"
+#define EX_NAME			".jpg"
 
 //#define F_NAME_COM		"car_comp.csv"			//file name (component)
 #define F_NAME_COM		"./CAR_TRACKING/car_comp.csv"			//file name (component)
