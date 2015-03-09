@@ -283,6 +283,8 @@ int main(void)
 
       //update result 
       //update_result(LR,CUR);												//update_result
+      s_free(CUR);
+      s_free(A_SCORE);
 
       //save result
       /*	IplImage **cimg = (IplImage **) cvAlloc (sizeof (IplImage *) * 2);
