@@ -730,10 +730,13 @@ void calc_feature_byGPU
   thread_num_y = (out[0] < sqrt(max_thread_num)) ?
     out[0] : sqrt(max_thread_num);
 
+  if (thread_num_x == 0) thread_num_x++;
+  if (thread_num_y == 0) thread_num_y++;
+
   block_num_x = out[1] / thread_num_x;
   block_num_y = out[0] / thread_num_y;
-  if (out[1] % thread_num_x != 0) block_num_x++;
-  if (out[0] % thread_num_y != 0) block_num_y++;
+  if (out[1] % thread_num_x != 0 || block_num_x == 0) block_num_x++;
+  if (out[0] % thread_num_y != 0 || block_num_y == 0) block_num_y++;
 
   sharedMemBytes = 0;
 
