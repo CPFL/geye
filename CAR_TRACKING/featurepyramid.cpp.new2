@@ -229,6 +229,8 @@ FLOAT *ini_scales(Model_info *MI,IplImage *IM,int X,int Y) //X,Y length of image
 	{
 		interval = MI->interval;
 		max_scale = MI->max_scale;
+        MI->IM_HEIGHT = IM->height;
+        MI->IM_WIDTH = IM->width;
 	}
 
 	//return
